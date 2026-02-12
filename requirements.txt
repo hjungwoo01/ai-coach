@@ -1,0 +1,8 @@
+pandas
+numpy
+openai
+python-dotenv
+python-dateutil
+tqdm
+scikit-learn
+openpyxl

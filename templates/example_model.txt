@@ -1,0 +1,37 @@
+// PCSP Process Definitions (placeholder)
+// Replace with your sport-specific game model.
+//
+// This template shows the key patterns used in PCSP# models:
+//   - pcase { pN: Event -> NextState } for probabilistic transitions
+//   - Parameters p0, p1, ... are #defined above (raw frequency counts)
+//   - PAT normalizes pcase weights automatically
+//   - Guard conditions [won == na] control game flow
+//   - Assertions at the bottom tell PAT what to verify
+//
+// The tennis model (RH_RH.txt, 254 lines) has this same structure
+// but with serve/return/rally processes and 132 parameters.
+
+Game = Setup; (Entity1Turn [] Entity2Turn);
+
+Setup = []i:{state_a, state_b}@ Init{turn = i} -> Skip;
+
+Entity1Turn = [won == na]
+    pcase {
+        p0: Action_A{} -> Entity2Turn
+        p1: Action_B{} -> Entity2Turn
+        p2: Score{score1 = score1 + 1; if (score1 >= target_score) {won = entity1}} -> NextPoint
+        p3: Miss{score2 = score2 + 1; if (score2 >= target_score) {won = entity2}} -> NextPoint
+    };
+
+Entity2Turn = [won == na]
+    pcase {
+        p4: Action_A{} -> Entity1Turn
+        p5: Action_B{} -> Entity1Turn
+        p6: Score{score2 = score2 + 1; if (score2 >= target_score) {won = entity2}} -> NextPoint
+        p7: Miss{score1 = score1 + 1; if (score1 >= target_score) {won = entity1}} -> NextPoint
+    };
+
+NextPoint = Entity1Turn [] Entity2Turn [] ([won != na] GameOver -> Skip);
+
+#define entity1Win won == entity1;
+#assert Game reaches entity1Win with prob;
