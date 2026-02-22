@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
     chat.add_argument("--budget", type=int, default=60)
     chat.add_argument("--pat-path", default=None)
     chat.add_argument("--timeout", type=int, default=None)
-    chat.add_argument("--model", default="gemini-1.5-flash")
+    chat.add_argument("--model", default="gemini-2.5-flash")
     chat.add_argument("--show-trace", action="store_true")
     chat.set_defaults(func=command_chat)
 
