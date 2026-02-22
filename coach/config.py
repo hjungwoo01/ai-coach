@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-import platform
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -66,8 +65,6 @@ class CoachConfig:
             return self.pat_use_mono
 
         path = pat_console_path or self.pat_console_path
-        if platform.system() == "Windows":
-            return False
         if path is None:
             return False
         return path.suffix.lower() == ".exe"

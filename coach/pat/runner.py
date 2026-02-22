@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import platform
 import shutil
 import subprocess
 import textwrap
@@ -193,7 +192,7 @@ def run_pat(
             "probability": None,
             "error": (
                 "PAT command could not be started. Ensure PAT_CONSOLE_PATH is correct and "
-                "Mono is installed on macOS/Linux when required."
+                "Mono is installed and available on PATH when required."
             ),
         }
         pat_run_json.write_text(json.dumps(payload, indent=2), encoding="utf-8")
@@ -249,8 +248,6 @@ def resolve_pat_console_path(pat_console_path: Path) -> Path:
 def _resolve_use_mono(use_mono: bool | None, pat_console_path: Path) -> bool:
     if use_mono is not None:
         return use_mono
-    if platform.system() == "Windows":
-        return False
     return pat_console_path.suffix.lower() == ".exe"
 
 
@@ -330,8 +327,6 @@ def _should_try_pat3_mono_compat_fallback(
     stderr: str,
     out_path: Path,
 ) -> bool:
-    if platform.system() == "Windows":
-        return False
     if not use_mono:
         return False
     if out_path.exists():
@@ -492,12 +487,12 @@ def _infer_hint_from_output(*, stdout: str, stderr: str) -> str | None:
     combined = f"{stdout}\n{stderr}".lower()
     if "invalid arguments. invalid image" in combined:
         return (
-            "PAT3.Console under Mono can fail on macOS due NESC startup checks. "
+            "PAT3.Console under Mono can fail due NESC startup checks. "
             "The runner will attempt a compatibility shim automatically; if this still fails, install full Mono (with mcs) or use PAT4."
         )
     if "object reference not set to an instance of an object" in combined:
         return (
             "This is usually PAT3 NESC startup failure on Mono. "
-            "Try setting PAT_CONSOLE_PATH to PAT3.Console.exe and let the runner apply macOS compatibility fallback."
+            "Try setting PAT_CONSOLE_PATH to PAT3.Console.exe and let the runner apply compatibility fallback."
         )
     return None

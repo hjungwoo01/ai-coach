@@ -21,7 +21,7 @@ def main() -> None:
     os_name = platform.system()
     pat_path = cfg.pat_console_path
     resolved_pat = resolve_pat_console_path(pat_path) if pat_path else None
-    use_mono = cfg.resolve_use_mono(resolved_pat) if resolved_pat else (os_name != "Windows")
+    use_mono = cfg.resolve_use_mono(resolved_pat)
 
     print(f"OS: {os_name}")
     print(f"PAT_CONSOLE_PATH: {pat_path}")
@@ -126,7 +126,7 @@ def _print_next_steps(reason: str) -> None:
     print("Next steps:")
     print("1. Download PAT from https://www.comp.nus.edu.sg/~pat/patdownload.htm")
     print("2. Set PAT_CONSOLE_PATH=.../PAT.Console.exe")
-    print("3. Install Mono (macOS/Linux) and ensure `mono` is on PATH")
+    print("3. Install Mono and ensure `mono` is on PATH")
 
 
 if __name__ == "__main__":
