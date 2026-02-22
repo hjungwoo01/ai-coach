@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-badminton-coach"
+version = "0.1.0"
+description = "AI Badminton Coach using LLM tool planning and PCSP#/PAT formal verification"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "AI Coach Team"}]
+dependencies = [
+  "numpy>=1.26,<2.0",
+  "pandas>=2.1",
+  "pydantic>=2.6",
+  "google-genai>=1.0",
+  "matplotlib>=3.8",
+  "python-dotenv>=1.0",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.0",
+]
+
+[project.scripts]
+coach = "coach.cli:main"
+coach-batch-predict = "coach.analysis.batch_predict:main"
+coach-batch-strategy = "coach.analysis.batch_strategy:main"
+coach-experiments = "coach.analysis.experiments:main"
+
+[tool.setuptools.packages.find]
+include = ["coach*"]
+exclude = ["tests*"]

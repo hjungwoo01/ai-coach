@@ -1,0 +1,54 @@
+// AI Badminton Coach parametric template
+// Player A: {{playerA_name}} | Player B: {{playerB_name}}
+// Effective probabilities:
+// pA_srv_win={{pA_srv_win}}, pA_rcv_win={{pA_rcv_win}}
+// Strategy knobs:
+// serve_mix_A_short={{serve_mix_A_short}}, serve_mix_B_short={{serve_mix_B_short}}
+// rally_style_A_attack={{rally_style_A_attack}}, rally_style_A_safe={{rally_style_A_safe}}
+// rally_style_B_attack={{rally_style_B_attack}}, rally_style_B_safe={{rally_style_B_safe}}
+// Weights: w_short={{w_short}}, w_attack={{w_attack}}, w_safe={{w_safe}}
+
+#define TARGET {{target}};
+#define CAP {{cap}};
+#define GAMES_TO_WIN {{games_to_win}};
+
+enum{A, B};
+
+var a_games = 0;
+var b_games = 0;
+var a_points = 0;
+var b_points = 0;
+var server = A;
+
+#define A_GameWin ((a_points >= TARGET && (a_points - b_points) >= 2) || a_points == CAP);
+#define B_GameWin ((b_points >= TARGET && (b_points - a_points) >= 2) || b_points == CAP);
+
+BadmintonMatch = Rally;
+
+Rally = [a_games < GAMES_TO_WIN && b_games < GAMES_TO_WIN]
+    ([server == A] ServeA [] [server == B] ServeB);
+
+ServeA = pcase {
+    {{pA_srv_win_w}}: AWinServe -> UpdateA
+    {{pA_srv_lose_w}}: BWinOnA -> UpdateB
+};
+
+ServeB = pcase {
+    {{pA_rcv_win_w}}: AWinReceive -> UpdateA
+    {{pA_rcv_lose_w}}: BWinServe -> UpdateB
+};
+
+UpdateA = ScoreA{a_points = a_points + 1; server = A;} -> CheckGame;
+UpdateB = ScoreB{b_points = b_points + 1; server = B;} -> CheckGame;
+
+CheckGame =
+    [A_GameWin] EndGameA{a_games = a_games + 1; a_points = 0; b_points = 0; server = A;} -> NextState
+    [] [B_GameWin] EndGameB{b_games = b_games + 1; a_points = 0; b_points = 0; server = B;} -> NextState
+    [] [!(A_GameWin) && !(B_GameWin)] ContinueRally -> Rally;
+
+NextState =
+    [a_games < GAMES_TO_WIN && b_games < GAMES_TO_WIN] Rally
+    [] [a_games == GAMES_TO_WIN || b_games == GAMES_TO_WIN] MatchDone -> Skip;
+
+#define A_WinsMatch a_games == GAMES_TO_WIN;
+#assert BadmintonMatch reaches A_WinsMatch with prob;

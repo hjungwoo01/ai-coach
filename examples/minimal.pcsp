@@ -1,0 +1,11 @@
+enum{A, B, NA};
+
+var won = NA;
+
+Minimal = pcase {
+  60: AWin{won = A;} -> Skip
+  40: BWin{won = B;} -> Skip
+};
+
+#define A_Wins won == A;
+#assert Minimal reaches A_Wins with prob;

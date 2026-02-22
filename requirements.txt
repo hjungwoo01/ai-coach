@@ -1,8 +1,9 @@
-pandas
-numpy
-openai
-python-dotenv
-python-dateutil
-tqdm
-scikit-learn
-openpyxl
+numpy>=1.26,<2.0
+pandas>=2.1
+pydantic>=2.6
+google-genai>=1.0
+matplotlib>=3.8
+python-dotenv>=1.0
+fastapi>=0.110
+uvicorn>=0.29
+pytest>=8.0
