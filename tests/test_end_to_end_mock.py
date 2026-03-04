@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from coach.agent.planner import AgentExecutor
@@ -34,7 +35,14 @@ def test_strategy_end_to_end_mock(tmp_path: Path) -> None:
     assert 0.0 <= result.baseline_probability <= 1.0
     assert 0.0 <= result.improved_probability <= 1.0
     assert len(result.top_alternatives) >= 1
+    assert hasattr(result.best_candidate, "unforced_error_delta")
+    assert hasattr(result.best_candidate, "return_pressure_delta")
+    assert hasattr(result.best_candidate, "clutch_delta")
     assert (result.run_dir / "strategy_result.json").exists()
+    payload = json.loads((result.run_dir / "strategy_result.json").read_text(encoding="utf-8"))
+    assert "unforced_error_delta" in payload["best_candidate"]
+    assert "return_pressure_delta" in payload["best_candidate"]
+    assert "clutch_delta" in payload["best_candidate"]
 
 
 def test_agent_query_mock_mode(tmp_path: Path) -> None:

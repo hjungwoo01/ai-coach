@@ -42,6 +42,9 @@ class InfluenceWeights(BaseModel):
     w_short: float = Field(..., gt=0.0, le=0.3)
     w_attack: float = Field(..., gt=0.0, le=0.3)
     w_safe: float = Field(..., gt=0.0, le=0.3)
+    w_ue: float = Field(default=0.08, gt=0.0, le=0.3)
+    w_return_pressure: float = Field(default=0.07, gt=0.0, le=0.3)
+    w_clutch: float = Field(default=0.05, gt=0.0, le=0.2)
 
 
 class PlayerParams(BaseModel):
@@ -51,6 +54,9 @@ class PlayerParams(BaseModel):
     name: str
     base_srv_win: float = Field(..., ge=0.01, le=0.99)
     base_rcv_win: float = Field(..., ge=0.01, le=0.99)
+    unforced_error_rate: float = Field(default=0.18, ge=0.01, le=0.6)
+    return_pressure: float = Field(default=0.5, ge=0.01, le=0.99)
+    clutch_point_win: float = Field(default=0.5, ge=0.01, le=0.99)
     serve_mix: ServeMix
     rally_style: RallyStyleMix
     sample_matches: int = Field(default=0, ge=0)
@@ -90,10 +96,42 @@ class MatchupParams(BaseModel):
             - self.weights.w_safe * (b.rally_style.safe - a.rally_style.safe)
         )
 
+    def _micro_edges(self) -> dict[str, float]:
+        a = self.player_a
+        b = self.player_b
+        return {
+            # Lower unforced-error rate is better for player A.
+            "ue_edge": b.unforced_error_rate - a.unforced_error_rate,
+            "return_edge": a.return_pressure - b.return_pressure,
+            "clutch_edge": a.clutch_point_win - b.clutch_point_win,
+        }
+
     def effective_probabilities(self) -> dict[str, float]:
-        delta = self._style_delta()
-        p_a_srv = clamp(self.player_a.base_srv_win + delta)
-        p_a_rcv = clamp(self.player_a.base_rcv_win + delta)
+        a = self.player_a
+        b = self.player_b
+        style_delta = self._style_delta()
+        edges = self._micro_edges()
+
+        serve_delta = (
+            style_delta
+            + self.weights.w_ue * edges["ue_edge"]
+            + 0.55 * self.weights.w_return_pressure * edges["return_edge"]
+            + self.weights.w_clutch * edges["clutch_edge"]
+        )
+        receive_style_delta = (
+            0.45 * self.weights.w_short * (a.serve_mix.short - b.serve_mix.short)
+            + 0.75 * self.weights.w_attack * (a.rally_style.attack - b.rally_style.attack)
+            - 0.75 * self.weights.w_safe * (b.rally_style.safe - a.rally_style.safe)
+        )
+        receive_delta = (
+            receive_style_delta
+            + 0.65 * self.weights.w_ue * edges["ue_edge"]
+            + 0.95 * self.weights.w_return_pressure * edges["return_edge"]
+            + 0.70 * self.weights.w_clutch * edges["clutch_edge"]
+        )
+
+        p_a_srv = clamp(a.base_srv_win + serve_delta)
+        p_a_rcv = clamp(a.base_rcv_win + receive_delta)
 
         return {
             "pA_srv_win": p_a_srv,
@@ -102,7 +140,14 @@ class MatchupParams(BaseModel):
             "pB_rcv_win": clamp(1.0 - p_a_srv),
         }
 
-    def with_adjustments(self, serve_short_delta: float = 0.0, attack_delta: float = 0.0) -> "MatchupParams":
+    def with_adjustments(
+        self,
+        serve_short_delta: float = 0.0,
+        attack_delta: float = 0.0,
+        unforced_error_delta: float = 0.0,
+        return_pressure_delta: float = 0.0,
+        clutch_delta: float = 0.0,
+    ) -> "MatchupParams":
         a = self.player_a
 
         short = clamp(a.serve_mix.short + serve_short_delta, 0.01, 0.99)
@@ -114,7 +159,15 @@ class MatchupParams(BaseModel):
         safe = (a.rally_style.safe / remain_old) * (1.0 - attack)
         rally_style = RallyStyleMix(attack=attack, neutral=neutral, safe=safe)
 
-        new_a = a.model_copy(update={"serve_mix": serve_mix, "rally_style": rally_style})
+        new_a = a.model_copy(
+            update={
+                "serve_mix": serve_mix,
+                "rally_style": rally_style,
+                "unforced_error_rate": clamp(a.unforced_error_rate + unforced_error_delta, 0.01, 0.6),
+                "return_pressure": clamp(a.return_pressure + return_pressure_delta, 0.01, 0.99),
+                "clutch_point_win": clamp(a.clutch_point_win + clutch_delta, 0.01, 0.99),
+            }
+        )
         return self.model_copy(update={"player_a": new_a})
 
     def l1_change_from(self, baseline: "MatchupParams") -> float:
@@ -126,6 +179,9 @@ class MatchupParams(BaseModel):
             + abs(a_now.rally_style.attack - a_base.rally_style.attack)
             + abs(a_now.rally_style.neutral - a_base.rally_style.neutral)
             + abs(a_now.rally_style.safe - a_base.rally_style.safe)
+            + abs(a_now.unforced_error_rate - a_base.unforced_error_rate)
+            + abs(a_now.return_pressure - a_base.return_pressure)
+            + abs(a_now.clutch_point_win - a_base.clutch_point_win)
         )
 
     def to_template_context(self) -> dict[str, Any]:
@@ -150,6 +206,12 @@ class MatchupParams(BaseModel):
             "baseA_rcv_win": f"{self.player_a.base_rcv_win:.6f}",
             "baseB_srv_win": f"{self.player_b.base_srv_win:.6f}",
             "baseB_rcv_win": f"{self.player_b.base_rcv_win:.6f}",
+            "ue_rate_A": f"{self.player_a.unforced_error_rate:.6f}",
+            "ue_rate_B": f"{self.player_b.unforced_error_rate:.6f}",
+            "return_pressure_A": f"{self.player_a.return_pressure:.6f}",
+            "return_pressure_B": f"{self.player_b.return_pressure:.6f}",
+            "clutch_A": f"{self.player_a.clutch_point_win:.6f}",
+            "clutch_B": f"{self.player_b.clutch_point_win:.6f}",
             "serve_mix_A_short": f"{self.player_a.serve_mix.short:.6f}",
             "serve_mix_A_flick": f"{self.player_a.serve_mix.flick:.6f}",
             "serve_mix_B_short": f"{self.player_b.serve_mix.short:.6f}",
@@ -163,6 +225,9 @@ class MatchupParams(BaseModel):
             "w_short": f"{self.weights.w_short:.6f}",
             "w_attack": f"{self.weights.w_attack:.6f}",
             "w_safe": f"{self.weights.w_safe:.6f}",
+            "w_ue": f"{self.weights.w_ue:.6f}",
+            "w_return_pressure": f"{self.weights.w_return_pressure:.6f}",
+            "w_clutch": f"{self.weights.w_clutch:.6f}",
             "playerA_name": self.player_a.name,
             "playerB_name": self.player_b.name,
         }

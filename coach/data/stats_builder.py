@@ -36,13 +36,44 @@ def _resolve_player(adapter: LocalCSVAdapter, player_ref: str) -> PlayerRecord:
 def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
     df = adapter.matches_df.copy()
     if len(df) < 10:
-        return InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05)
+        return InfluenceWeights(
+            w_short=0.04,
+            w_attack=0.06,
+            w_safe=0.05,
+            w_ue=0.08,
+            w_return_pressure=0.07,
+            w_clutch=0.05,
+        )
 
     x_short = df["a_short_serve_rate"] - df["b_short_serve_rate"]
     x_attack = df["a_attack_rate"] - df["b_attack_rate"]
     x_safe_term = -(df["b_safe_rate"] - df["a_safe_rate"])
+    total_points = (df["a_points"] + df["b_points"]).clip(lower=1.0)
 
-    total_points = df["a_points"] + df["b_points"]
+    a_receive = (df["b_serve_rallies"] - df["b_serve_wins"]) / df["b_serve_rallies"].clip(lower=1.0)
+    b_receive = (df["a_serve_rallies"] - df["a_serve_wins"]) / df["a_serve_rallies"].clip(lower=1.0)
+    x_return_pressure = a_receive - b_receive
+
+    a_ue = (
+        0.08
+        + 0.22 * df["a_attack_rate"]
+        + 0.08 * df["a_flick_serve_rate"]
+        + 0.11 * (df["b_points"] / total_points)
+        - 0.09 * df["a_safe_rate"]
+    )
+    b_ue = (
+        0.08
+        + 0.22 * df["b_attack_rate"]
+        + 0.08 * df["b_flick_serve_rate"]
+        + 0.11 * (df["a_points"] / total_points)
+        - 0.09 * df["b_safe_rate"]
+    )
+    x_ue = b_ue - a_ue
+
+    close_factor = 1.0 - ((df["a_points"] - df["b_points"]).abs() / total_points)
+    winner_sign = np.where(df["winner_id"] == df["playerA_id"], 1.0, -1.0)
+    x_clutch = close_factor.to_numpy(dtype=float) * winner_sign
+
     y = (df["a_points"] / total_points) - 0.5
 
     X = np.column_stack([
@@ -50,6 +81,9 @@ def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
         x_short.to_numpy(dtype=float),
         x_attack.to_numpy(dtype=float),
         x_safe_term.to_numpy(dtype=float),
+        x_ue.to_numpy(dtype=float),
+        x_return_pressure.to_numpy(dtype=float),
+        x_clutch,
     ])
 
     beta, *_ = np.linalg.lstsq(X, y.to_numpy(dtype=float), rcond=None)
@@ -57,8 +91,18 @@ def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
     w_short = float(np.clip(abs(beta[1]), 0.01, 0.2))
     w_attack = float(np.clip(abs(beta[2]), 0.01, 0.2))
     w_safe = float(np.clip(abs(beta[3]), 0.01, 0.2))
+    w_ue = float(np.clip(abs(beta[4]), 0.01, 0.2))
+    w_return_pressure = float(np.clip(abs(beta[5]), 0.01, 0.2))
+    w_clutch = float(np.clip(abs(beta[6]), 0.01, 0.12))
 
-    return InfluenceWeights(w_short=w_short, w_attack=w_attack, w_safe=w_safe)
+    return InfluenceWeights(
+        w_short=w_short,
+        w_attack=w_attack,
+        w_safe=w_safe,
+        w_ue=w_ue,
+        w_return_pressure=w_return_pressure,
+        w_clutch=w_clutch,
+    )
 
 
 def _build_player_params(stats: dict[str, Any], sample_matches: int) -> PlayerParams:
@@ -74,6 +118,9 @@ def _build_player_params(stats: dict[str, Any], sample_matches: int) -> PlayerPa
         name=str(stats["name"]),
         base_srv_win=clamp(float(stats["base_srv_win"])),
         base_rcv_win=clamp(float(stats["base_rcv_win"])),
+        unforced_error_rate=clamp(float(stats["unforced_error_rate"]), 0.01, 0.6),
+        return_pressure=clamp(float(stats["return_pressure"]), 0.01, 0.99),
+        clutch_point_win=clamp(float(stats["clutch_point_win"]), 0.01, 0.99),
         serve_mix=serve_mix,
         rally_style=rally_style,
         sample_matches=sample_matches,

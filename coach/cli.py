@@ -64,7 +64,10 @@ def command_strategy(args: argparse.Namespace) -> None:
     print(
         "best_changes: "
         f"serve_mix.short {result.best_candidate.serve_short_delta:+.3f}, "
-        f"rally_style.attack {result.best_candidate.attack_delta:+.3f}"
+        f"rally_style.attack {result.best_candidate.attack_delta:+.3f}, "
+        f"unforced_error_rate {result.best_candidate.unforced_error_delta:+.3f}, "
+        f"return_pressure {result.best_candidate.return_pressure_delta:+.3f}, "
+        f"clutch_point_win {result.best_candidate.clutch_delta:+.3f}"
     )
 
     print("top_alternatives:")
@@ -72,7 +75,11 @@ def command_strategy(args: argparse.Namespace) -> None:
         print(
             f"  rank={cand.rank} prob={cand.probability:.6f} "
             f"serve_short_delta={cand.serve_short_delta:+.3f} "
-            f"attack_delta={cand.attack_delta:+.3f} l1={cand.l1_change:.3f}"
+            f"attack_delta={cand.attack_delta:+.3f} "
+            f"unforced_error_delta={cand.unforced_error_delta:+.3f} "
+            f"return_pressure_delta={cand.return_pressure_delta:+.3f} "
+            f"clutch_delta={cand.clutch_delta:+.3f} "
+            f"l1={cand.l1_change:.3f}"
         )
 
 

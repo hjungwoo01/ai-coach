@@ -8,7 +8,8 @@ from typing import Any
 
 _PARAM_PATTERN = re.compile(
     r"\b(pA_srv_win|pA_rcv_win|serve_mix_A_short|serve_mix_B_short|"
-    r"rally_style_A_attack|rally_style_B_attack|rally_style_A_safe|rally_style_B_safe)\b"
+    r"rally_style_A_attack|rally_style_B_attack|rally_style_A_safe|rally_style_B_safe|"
+    r"ue_rate_A|ue_rate_B|return_pressure_A|return_pressure_B|clutch_A|clutch_B)\b"
     r"\s*[:=]\s*([+-]?(?:\d*\.\d+|\d+))",
     flags=re.IGNORECASE,
 )
@@ -26,6 +27,9 @@ def mock_probability(params: dict[str, Any]) -> float:
     serve_edge = float(params.get("serve_mix_A_short", 0.5)) - float(params.get("serve_mix_B_short", 0.5))
     attack_edge = float(params.get("rally_style_A_attack", 0.33)) - float(params.get("rally_style_B_attack", 0.33))
     safe_edge = float(params.get("rally_style_B_safe", 0.33)) - float(params.get("rally_style_A_safe", 0.33))
+    ue_edge = float(params.get("ue_rate_B", 0.18)) - float(params.get("ue_rate_A", 0.18))
+    return_edge = float(params.get("return_pressure_A", 0.5)) - float(params.get("return_pressure_B", 0.5))
+    clutch_edge = float(params.get("clutch_A", 0.5)) - float(params.get("clutch_B", 0.5))
 
     linear = (
         2.8 * (p_a_srv - 0.5)
@@ -33,6 +37,9 @@ def mock_probability(params: dict[str, Any]) -> float:
         + 0.7 * serve_edge
         + 0.9 * attack_edge
         - 0.6 * safe_edge
+        + 0.9 * ue_edge
+        + 0.7 * return_edge
+        + 0.5 * clutch_edge
     )
     probability = _logistic(linear)
     return max(0.01, min(0.99, probability))

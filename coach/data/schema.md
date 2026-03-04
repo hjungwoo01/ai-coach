@@ -30,6 +30,10 @@ Columns:
   - `p = (wins + alpha) / (trials + 2*alpha)`
 - Strategy mixes are weighted averages with Dirichlet-style pseudocounts.
 - Head-to-head is blended with player baseline (small-sample shrinkage).
+- Additional fine-grained tactical proxies are derived from match-level stats:
+  - `unforced_error_rate` (attack/flick/safe/point-loss proxy)
+  - `return_pressure` (receive quality + attack intent + point share)
+  - `clutch_point_win` (close-score point share + close-match win smoothing)
 
 ## Limits
 - Match-level proxies are used instead of full rally logs.

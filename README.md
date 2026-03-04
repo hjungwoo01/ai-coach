@@ -86,6 +86,13 @@ coach strategy --a "Viktor Axelsen" --b "Kento Momota" --mode mock --budget 60
 
 Use `--mode real` to execute PAT Console.
 
+Strategy now searches fine-grained tactical knobs (including `1%-3%` micro-shifts):
+- `serve_mix.short`
+- `rally_style.attack`
+- `unforced_error_rate` (proxy)
+- `return_pressure`
+- `clutch_point_win`
+
 ## Run Artifacts
 
 Every run writes `runs/<run_id>/` with:

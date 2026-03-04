@@ -48,6 +48,9 @@ def run_batch_strategy(
                 "delta": round(result.delta, 6),
                 "best_serve_short_delta": round(result.best_candidate.serve_short_delta, 6),
                 "best_attack_delta": round(result.best_candidate.attack_delta, 6),
+                "best_unforced_error_delta": round(result.best_candidate.unforced_error_delta, 6),
+                "best_return_pressure_delta": round(result.best_candidate.return_pressure_delta, 6),
+                "best_clutch_delta": round(result.best_candidate.clutch_delta, 6),
                 "mode": result.mode,
                 "run_dir": str(result.run_dir),
             }

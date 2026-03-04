@@ -331,6 +331,9 @@ class AgentExecutor:
         return (
             f"Baseline P(win)={payload['baseline_probability']:.2%}. "
             f"Best found P(win)={payload['improved_probability']:.2%} "
-            f"(delta={payload['delta']:.2%}) by changing A short-serve by {best['serve_short_delta']:+.1%} "
-            f"and attack style by {best['attack_delta']:+.1%}."
+            f"(delta={payload['delta']:.2%}) by changing short-serve {best['serve_short_delta']:+.1%}, "
+            f"attack style {best['attack_delta']:+.1%}, "
+            f"unforced-error proxy {best.get('unforced_error_delta', 0.0):+.1%}, "
+            f"return pressure {best.get('return_pressure_delta', 0.0):+.1%}, "
+            f"and clutch-point win {best.get('clutch_delta', 0.0):+.1%}."
         )

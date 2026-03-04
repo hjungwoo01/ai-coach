@@ -62,6 +62,9 @@ class StrategyCandidate:
     rank: int
     serve_short_delta: float
     attack_delta: float
+    unforced_error_delta: float
+    return_pressure_delta: float
+    clutch_delta: float
     l1_change: float
     probability: float
 
@@ -206,6 +209,9 @@ class BadmintonCoachService:
             adjusted = params.with_adjustments(
                 serve_short_delta=candidate["serve_short_delta"],
                 attack_delta=candidate["attack_delta"],
+                unforced_error_delta=candidate["unforced_error_delta"],
+                return_pressure_delta=candidate["return_pressure_delta"],
+                clutch_delta=candidate["clutch_delta"],
             )
 
             cand_path = candidate_dir / f"candidate_{idx:03d}.pcsp"
@@ -232,6 +238,10 @@ class BadmintonCoachService:
                         rank=0,
                         serve_short_delta=adjusted.player_a.serve_mix.short - params.player_a.serve_mix.short,
                         attack_delta=adjusted.player_a.rally_style.attack - params.player_a.rally_style.attack,
+                        unforced_error_delta=adjusted.player_a.unforced_error_rate
+                        - params.player_a.unforced_error_rate,
+                        return_pressure_delta=adjusted.player_a.return_pressure - params.player_a.return_pressure,
+                        clutch_delta=adjusted.player_a.clutch_point_win - params.player_a.clutch_point_win,
                         l1_change=adjusted.l1_change_from(params),
                         probability=pat_exec.probability,
                     ),
@@ -254,6 +264,9 @@ class BadmintonCoachService:
                 rank=i,
                 serve_short_delta=c.serve_short_delta,
                 attack_delta=c.attack_delta,
+                unforced_error_delta=c.unforced_error_delta,
+                return_pressure_delta=c.return_pressure_delta,
+                clutch_delta=c.clutch_delta,
                 l1_change=c.l1_change,
                 probability=c.probability,
             )
@@ -333,20 +346,64 @@ class BadmintonCoachService:
         return new_run_dir(prefix=prefix, base_dir=self.runs_root)
 
     def _generate_candidates(self, baseline: MatchupParams, l1_bound: float) -> list[dict[str, float]]:
-        serve_steps = [-0.20, -0.10, -0.05, 0.05, 0.10, 0.20]
-        attack_steps = [-0.20, -0.10, -0.05, 0.05, 0.10, 0.20]
+        knob_steps: dict[str, list[float]] = {
+            "serve_short_delta": [-0.08, -0.05, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.05, 0.08],
+            "attack_delta": [-0.08, -0.05, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.05, 0.08],
+            "unforced_error_delta": [-0.06, -0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04, 0.06],
+            "return_pressure_delta": [-0.06, -0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04, 0.06],
+            "clutch_delta": [-0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04],
+        }
+        pair_knobs = [
+            ("serve_short_delta", "attack_delta"),
+            ("serve_short_delta", "unforced_error_delta"),
+            ("serve_short_delta", "return_pressure_delta"),
+            ("attack_delta", "unforced_error_delta"),
+            ("attack_delta", "clutch_delta"),
+            ("return_pressure_delta", "clutch_delta"),
+        ]
+        pair_steps = {k: [d for d in values if abs(d) <= 0.03] for k, values in knob_steps.items()}
 
         candidates: list[dict[str, float]] = []
-        for ds in serve_steps + [0.0]:
-            for da in attack_steps + [0.0]:
-                if ds == 0.0 and da == 0.0:
-                    continue
-                adjusted = baseline.with_adjustments(serve_short_delta=ds, attack_delta=da)
-                l1 = adjusted.l1_change_from(baseline)
-                if l1 <= l1_bound + 1e-9:
-                    candidates.append({"serve_short_delta": ds, "attack_delta": da, "l1": l1})
+        seen: set[tuple[float, ...]] = set()
+        ordered_knobs = list(knob_steps.keys())
 
-        candidates.sort(key=lambda c: (c["l1"], abs(c["serve_short_delta"]) + abs(c["attack_delta"])))
+        def _make_payload(changes: dict[str, float]) -> dict[str, float]:
+            payload = {k: 0.0 for k in ordered_knobs}
+            payload.update(changes)
+            return payload
+
+        def _maybe_add(changes: dict[str, float]) -> None:
+            payload = _make_payload(changes)
+            key = tuple(round(payload[k], 6) for k in ordered_knobs)
+            if key in seen:
+                return
+
+            adjusted = baseline.with_adjustments(
+                serve_short_delta=payload["serve_short_delta"],
+                attack_delta=payload["attack_delta"],
+                unforced_error_delta=payload["unforced_error_delta"],
+                return_pressure_delta=payload["return_pressure_delta"],
+                clutch_delta=payload["clutch_delta"],
+            )
+            l1 = adjusted.l1_change_from(baseline)
+            if l1 <= l1_bound + 1e-9:
+                payload["l1"] = l1
+                candidates.append(payload)
+                seen.add(key)
+
+        for knob, steps in knob_steps.items():
+            for delta in steps:
+                _maybe_add({knob: delta})
+
+        for knob_1, knob_2 in pair_knobs:
+            for delta_1 in pair_steps[knob_1]:
+                for delta_2 in pair_steps[knob_2]:
+                    _maybe_add({knob_1: delta_1, knob_2: delta_2})
+
+        def _magnitude(candidate: dict[str, float]) -> float:
+            return sum(abs(candidate[k]) for k in ordered_knobs)
+
+        candidates.sort(key=lambda c: (c["l1"], _magnitude(c)))
         return candidates
 
     def _write_prediction_artifacts(self, result: PredictionResult, window: int, as_of_date: str | None) -> None:
@@ -456,7 +513,16 @@ class BadmintonCoachService:
         with csv_path.open("w", newline="", encoding="utf-8") as f:
             writer = csv.DictWriter(
                 f,
-                fieldnames=["rank", "serve_short_delta", "attack_delta", "l1_change", "probability"],
+                fieldnames=[
+                    "rank",
+                    "serve_short_delta",
+                    "attack_delta",
+                    "unforced_error_delta",
+                    "return_pressure_delta",
+                    "clutch_delta",
+                    "l1_change",
+                    "probability",
+                ],
             )
             writer.writeheader()
             for cand in result.top_alternatives:

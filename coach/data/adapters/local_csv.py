@@ -155,6 +155,26 @@ class LocalCSVAdapter:
         alpha = self.laplace_alpha if alpha is None else alpha
         return float((wins + alpha) / (trials + 2.0 * alpha))
 
+    @staticmethod
+    def _estimate_unforced_error_proxy(
+        *,
+        attack_rate: float,
+        safe_rate: float,
+        flick_rate: float,
+        points_for: float,
+        points_against: float,
+    ) -> float:
+        total = max(points_for + points_against, 1.0)
+        point_loss = points_against / total
+        proxy = (
+            0.08
+            + 0.22 * attack_rate
+            + 0.08 * flick_rate
+            + 0.11 * point_loss
+            - 0.09 * safe_rate
+        )
+        return float(min(0.6, max(0.01, proxy)))
+
     def get_player_params(
         self,
         player_id: str,
@@ -192,6 +212,43 @@ class LocalCSVAdapter:
 
         wins = int(perspective["won"].sum())
         matches = int(len(perspective))
+        points_for_total = float(perspective["points_for"].sum())
+        points_against_total = float(perspective["points_against"].sum())
+        point_share = points_for_total / max(points_for_total + points_against_total, 1.0)
+
+        ue_proxy_series = perspective.apply(
+            lambda row: self._estimate_unforced_error_proxy(
+                attack_rate=float(row["attack_rate"]),
+                safe_rate=float(row["safe_rate"]),
+                flick_rate=float(row["flick_rate"]),
+                points_for=float(row["points_for"]),
+                points_against=float(row["points_against"]),
+            ),
+            axis=1,
+        )
+        unforced_error_rate = float((ue_proxy_series * rally_weight).sum() / rally_weight.sum())
+
+        return_pressure = float(
+            min(
+                0.99,
+                max(
+                    0.01,
+                    0.58 * base_rcv + 0.22 * attack + 0.20 * point_share,
+                ),
+            )
+        )
+
+        close_match = (perspective["points_for"] - perspective["points_against"]).abs() <= 6
+        close_df = perspective.loc[close_match]
+        if close_df.empty:
+            clutch_point_win = point_share
+        else:
+            close_points_for = float(close_df["points_for"].sum())
+            close_points_against = float(close_df["points_against"].sum())
+            close_point_share = close_points_for / max(close_points_for + close_points_against, 1.0)
+            close_win_rate = self._smooth_probability(float(close_df["won"].sum()), float(len(close_df)), alpha=1.0)
+            clutch_point_win = 0.65 * close_point_share + 0.35 * close_win_rate
+        clutch_point_win = float(min(0.99, max(0.01, clutch_point_win)))
 
         player_row = self.players_df[self.players_df["player_id"] == player_id].iloc[0]
         return {
@@ -201,6 +258,9 @@ class LocalCSVAdapter:
             "win_rate": self._smooth_probability(wins, matches, alpha=1.5),
             "base_srv_win": base_srv,
             "base_rcv_win": base_rcv,
+            "unforced_error_rate": unforced_error_rate,
+            "return_pressure": return_pressure,
+            "clutch_point_win": clutch_point_win,
             "serve_mix": {"short": short, "flick": flick},
             "rally_style": {"attack": attack, "neutral": neutral, "safe": safe},
             "serve_trials": int(serve_trials),
