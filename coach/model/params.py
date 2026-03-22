@@ -1,10 +1,31 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from coach.utils import clamp
+
+
+@dataclass(frozen=True)
+class _EffectiveProbabilityScales:
+    """Heuristic phase-specific multipliers for effective serve/receive win rates.
+
+    These coefficients intentionally damp serve-driven style effects on receive and let
+    return pressure carry more weight there, because it is closer to a direct receive skill.
+    """
+
+    serve_return_pressure: float = 0.55  # Return pressure helps on own serve, but only indirectly.
+    receive_short: float = 0.45  # Opponent serve mix matters on receive, but less than on serve setup.
+    receive_attack: float = 0.75  # Aggressive rally identity still matters on receive, with moderate damping.
+    receive_safe: float = 0.75  # Safe-play bias carries into receive rallies, but not at full strength.
+    receive_ue: float = 0.65  # Lower error rates help on receive, though less than in serve-led phases.
+    receive_return_pressure: float = 0.95  # Return pressure is almost a direct receive-side skill signal.
+    receive_clutch: float = 0.70  # Clutch edge still matters on receive, with some attenuation.
+
+
+_EFFECTIVE_PROBABILITY_SCALES = _EffectiveProbabilityScales()
 
 
 class ServeMix(BaseModel):
@@ -109,25 +130,26 @@ class MatchupParams(BaseModel):
     def effective_probabilities(self) -> dict[str, float]:
         a = self.player_a
         b = self.player_b
+        scales = _EFFECTIVE_PROBABILITY_SCALES
         style_delta = self._style_delta()
         edges = self._micro_edges()
 
         serve_delta = (
             style_delta
             + self.weights.w_ue * edges["ue_edge"]
-            + 0.55 * self.weights.w_return_pressure * edges["return_edge"]
+            + scales.serve_return_pressure * self.weights.w_return_pressure * edges["return_edge"]
             + self.weights.w_clutch * edges["clutch_edge"]
         )
         receive_style_delta = (
-            0.45 * self.weights.w_short * (a.serve_mix.short - b.serve_mix.short)
-            + 0.75 * self.weights.w_attack * (a.rally_style.attack - b.rally_style.attack)
-            - 0.75 * self.weights.w_safe * (b.rally_style.safe - a.rally_style.safe)
+            scales.receive_short * self.weights.w_short * (a.serve_mix.short - b.serve_mix.short)
+            + scales.receive_attack * self.weights.w_attack * (a.rally_style.attack - b.rally_style.attack)
+            - scales.receive_safe * self.weights.w_safe * (b.rally_style.safe - a.rally_style.safe)
         )
         receive_delta = (
             receive_style_delta
-            + 0.65 * self.weights.w_ue * edges["ue_edge"]
-            + 0.95 * self.weights.w_return_pressure * edges["return_edge"]
-            + 0.70 * self.weights.w_clutch * edges["clutch_edge"]
+            + scales.receive_ue * self.weights.w_ue * edges["ue_edge"]
+            + scales.receive_return_pressure * self.weights.w_return_pressure * edges["return_edge"]
+            + scales.receive_clutch * self.weights.w_clutch * edges["clutch_edge"]
         )
 
         p_a_srv = clamp(a.base_srv_win + serve_delta)

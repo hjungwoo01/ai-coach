@@ -29,15 +29,19 @@ _LEGACY_PARAM_ALIASES = {
     "ue_rate_b": "unforced_error_B",
 }
 _PARAM_KEY_LOOKUP.update(_LEGACY_PARAM_ALIASES)
+_ACCEPTED_PARAM_KEYS = _CANONICAL_PARAM_KEYS + tuple(_LEGACY_PARAM_ALIASES)
 
-_PARAM_PATTERN = re.compile(
-    r"\b(pA_srv_win|pA_rcv_win|serve_mix_A_short|serve_mix_B_short|"
-    r"rally_style_A_attack|rally_style_B_attack|rally_style_A_safe|rally_style_B_safe|"
-    r"unforced_error_A|unforced_error_B|ue_rate_A|ue_rate_B|"
-    r"return_pressure_A|return_pressure_B|clutch_A|clutch_B)\b"
-    r"\s*[:=]\s*([+-]?(?:\d*\.\d+|\d+))",
-    flags=re.IGNORECASE,
-)
+
+def _compile_param_pattern() -> re.Pattern[str]:
+    accepted_keys = sorted((re.escape(key) for key in _ACCEPTED_PARAM_KEYS), key=len, reverse=True)
+    return re.compile(
+        rf"\b({'|'.join(accepted_keys)})\b"
+        rf"\s*[:=]\s*([+-]?(?:\d*\.\d+|\d+))",
+        flags=re.IGNORECASE,
+    )
+
+
+_PARAM_PATTERN = _compile_param_pattern()
 
 
 def _logistic(value: float) -> float:

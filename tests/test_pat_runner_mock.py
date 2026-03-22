@@ -3,7 +3,12 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from coach.pat.mock_pat import mock_probability
+from coach.pat.mock_pat import (
+    _CANONICAL_PARAM_KEYS,
+    _LEGACY_PARAM_ALIASES,
+    _extract_params_from_pcsp,
+    mock_probability,
+)
 from coach.pat.parser import parse_probability, read_pat_output
 from coach.pat.runner import run_pat
 
@@ -190,3 +195,11 @@ def test_mock_probability_normalizes_mixed_case_param_dicts() -> None:
     )
 
     assert canonical == mixed_case
+
+
+def test_mock_pcsp_parser_accepts_all_declared_param_keys() -> None:
+    for index, key in enumerate((*_CANONICAL_PARAM_KEYS, *_LEGACY_PARAM_ALIASES), start=1):
+        value = index / 100
+        params = _extract_params_from_pcsp(f"{key.upper()} = {value}\n")
+        expected_key = _LEGACY_PARAM_ALIASES.get(key.lower(), key)
+        assert params == {expected_key: value}
