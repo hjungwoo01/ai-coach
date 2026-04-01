@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import difflib
 from dataclasses import dataclass
+from math import sqrt
 from pathlib import Path
 from typing import Any
 
@@ -115,6 +116,14 @@ class LocalCSVAdapter:
                 points_for = int(row.a_points)
                 points_against = int(row.b_points)
                 won = row.winner_id == row.playerA_id
+                short_serve_win_rate = float(getattr(row, "a_short_serve_win_rate", 0.5))
+                long_serve_win_rate = float(getattr(row, "a_long_serve_win_rate", 0.5))
+                short_serve_samples = int(getattr(row, "a_short_serve_samples", 0))
+                long_serve_samples = int(getattr(row, "a_long_serve_samples", 0))
+                backhand_rate = float(getattr(row, "a_backhand_rate", 0.0))
+                aroundhead_rate = float(getattr(row, "a_aroundhead_rate", 0.0))
+                net_error_lost_rate = float(getattr(row, "a_net_error_lost_rate", 0.0))
+                out_error_lost_rate = float(getattr(row, "a_out_error_lost_rate", 0.0))
             else:
                 opp_id = row.playerA_id
                 serve_rallies = int(row.b_serve_rallies)
@@ -129,6 +138,14 @@ class LocalCSVAdapter:
                 points_for = int(row.b_points)
                 points_against = int(row.a_points)
                 won = row.winner_id == row.playerB_id
+                short_serve_win_rate = float(getattr(row, "b_short_serve_win_rate", 0.5))
+                long_serve_win_rate = float(getattr(row, "b_long_serve_win_rate", 0.5))
+                short_serve_samples = int(getattr(row, "b_short_serve_samples", 0))
+                long_serve_samples = int(getattr(row, "b_long_serve_samples", 0))
+                backhand_rate = float(getattr(row, "b_backhand_rate", 0.0))
+                aroundhead_rate = float(getattr(row, "b_aroundhead_rate", 0.0))
+                net_error_lost_rate = float(getattr(row, "b_net_error_lost_rate", 0.0))
+                out_error_lost_rate = float(getattr(row, "b_out_error_lost_rate", 0.0))
 
             records.append(
                 {
@@ -146,6 +163,16 @@ class LocalCSVAdapter:
                     "safe_rate": safe_rate,
                     "points_for": points_for,
                     "points_against": points_against,
+                    "avg_rally_len": float(getattr(row, "avg_rally_len", 0.0)),
+                    "long_rally_share": float(getattr(row, "long_rally_share", 0.0)),
+                    "short_serve_win_rate": short_serve_win_rate,
+                    "long_serve_win_rate": long_serve_win_rate,
+                    "short_serve_samples": short_serve_samples,
+                    "long_serve_samples": long_serve_samples,
+                    "backhand_rate": backhand_rate,
+                    "aroundhead_rate": aroundhead_rate,
+                    "net_error_lost_rate": net_error_lost_rate,
+                    "out_error_lost_rate": out_error_lost_rate,
                     "won": int(won),
                 }
             )
@@ -250,7 +277,31 @@ class LocalCSVAdapter:
             clutch_point_win = 0.65 * close_point_share + 0.35 * close_win_rate
         clutch_point_win = float(min(0.99, max(0.01, clutch_point_win)))
 
+        short_serve_trials = float(perspective["short_serve_samples"].sum())
+        long_serve_trials = float(perspective["long_serve_samples"].sum())
+        short_serve_wins = float((perspective["short_serve_win_rate"] * perspective["short_serve_samples"]).sum())
+        long_serve_wins = float((perspective["long_serve_win_rate"] * perspective["long_serve_samples"]).sum())
+        short_serve_skill = self._smooth_probability(short_serve_wins, short_serve_trials, alpha=1.2)
+        long_serve_skill = self._smooth_probability(long_serve_wins, long_serve_trials, alpha=1.2)
+
+        avg_rally_len_raw = float((perspective["avg_rally_len"] * rally_weight).sum() / rally_weight.sum())
+        avg_rally_len_norm = min(1.0, max(0.0, avg_rally_len_raw / 12.0))
+        long_rally_share = float((perspective["long_rally_share"] * rally_weight).sum() / rally_weight.sum())
+        rally_tolerance = min(0.99, max(0.01, 0.45 * avg_rally_len_norm + 0.55 * long_rally_share))
+
+        net_error_rate = float((perspective["net_error_lost_rate"] * rally_weight).sum() / rally_weight.sum())
+        out_error_rate = float((perspective["out_error_lost_rate"] * rally_weight).sum() / rally_weight.sum())
+        backhand_rate = float((perspective["backhand_rate"] * rally_weight).sum() / rally_weight.sum())
+        aroundhead_rate = float((perspective["aroundhead_rate"] * rally_weight).sum() / rally_weight.sum())
+        net_error_rate = min(1.0, max(0.0, net_error_rate))
+        out_error_rate = min(1.0, max(0.0, out_error_rate))
+        backhand_rate = min(1.0, max(0.0, backhand_rate))
+        aroundhead_rate = min(1.0, max(0.0, aroundhead_rate))
+
         player_row = self.players_df[self.players_df["player_id"] == player_id].iloc[0]
+        handedness = str(player_row.get("handedness", "")).upper()
+        handedness_flag = 1.0 if handedness == "L" else 0.0
+        reliability = min(1.0, max(0.0, sqrt(max(0.0, serve_trials + receive_trials) / 80.0)))
         return {
             "player_id": player_id,
             "name": str(player_row["name"]),
@@ -263,6 +314,15 @@ class LocalCSVAdapter:
             "clutch_point_win": clutch_point_win,
             "serve_mix": {"short": short, "flick": flick},
             "rally_style": {"attack": attack, "neutral": neutral, "safe": safe},
+            "short_serve_skill": short_serve_skill,
+            "long_serve_skill": long_serve_skill,
+            "rally_tolerance": rally_tolerance,
+            "net_error_rate": net_error_rate,
+            "out_error_rate": out_error_rate,
+            "backhand_rate": backhand_rate,
+            "aroundhead_rate": aroundhead_rate,
+            "handedness_flag": handedness_flag,
+            "reliability": reliability,
             "serve_trials": int(serve_trials),
             "receive_trials": int(receive_trials),
         }

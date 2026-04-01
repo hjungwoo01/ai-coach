@@ -97,6 +97,8 @@ def process_set_csv(set_path: Path) -> dict:
         side: {
             "short_serves": 0, "long_serves": 0,
             "serve_rallies": 0, "serve_wins": 0,
+            "short_serve_samples": 0, "short_serve_wins": 0,
+            "long_serve_samples": 0, "long_serve_wins": 0,
             "attack": 0, "neutral": 0, "safe": 0,
             "strokes": 0,
             "backhand_true": 0,
@@ -104,10 +106,6 @@ def process_set_csv(set_path: Path) -> dict:
             "lost_rallies": 0,
             "net_error_lost": 0,
             "out_error_lost": 0,
-            "short_serve_samples": 0,
-            "short_serve_wins": 0,
-            "long_serve_samples": 0,
-            "long_serve_wins": 0,
         }
         for side in ("A", "B")
     }
@@ -150,7 +148,8 @@ def process_set_csv(set_path: Path) -> dict:
         # Determine rally winner
         point_rows = rally_df[rally_df["getpoint_player"].notna()]
         if not point_rows.empty:
-            winner = str(point_rows.iloc[-1]["getpoint_player"])
+            terminal = point_rows.iloc[-1]
+            winner = str(terminal["getpoint_player"])
             total_points[winner] += 1
             if server is not None and winner == server:
                 counts[server]["serve_wins"] += 1
@@ -162,7 +161,7 @@ def process_set_csv(set_path: Path) -> dict:
             if winner in {"A", "B"}:
                 loser = "B" if winner == "A" else "A"
                 counts[loser]["lost_rallies"] += 1
-                lose_reason_raw = point_rows.iloc[-1]["lose_reason"]
+                lose_reason_raw = terminal["lose_reason"]
                 lose_reason = str(lose_reason_raw) if pd.notna(lose_reason_raw) else ""
                 if lose_reason in NET_ERROR_REASONS:
                     counts[loser]["net_error_lost"] += 1
@@ -176,9 +175,9 @@ def process_set_csv(set_path: Path) -> dict:
                 continue
 
             counts[side]["strokes"] += 1
-            if row["backhand"] == 1:
+            if pd.notna(row.get("backhand")) and float(row["backhand"]) == 1.0:
                 counts[side]["backhand_true"] += 1
-            if row["aroundhead"] == 1:
+            if pd.notna(row.get("aroundhead")) and float(row["aroundhead"]) == 1.0:
                 counts[side]["aroundhead_true"] += 1
 
             eng = translate_type(str(row["type"]))
@@ -196,6 +195,11 @@ def process_set_csv(set_path: Path) -> dict:
         "total_points": total_points,
         "score_a": score_a,
         "score_b": score_b,
+        "rallies": {
+            "count": int(rally_context["rally_count"]),
+            "len_sum": float(rally_context["rally_len_total"]),
+            "long_count": int(rally_context["long_rally_count"]),
+        },
         "rally_context": rally_context,
     }
 
@@ -207,6 +211,8 @@ def process_match(match_folder: Path, num_sets: int) -> dict:
         side: {
             "short_serves": 0, "long_serves": 0,
             "serve_rallies": 0, "serve_wins": 0,
+            "short_serve_samples": 0, "short_serve_wins": 0,
+            "long_serve_samples": 0, "long_serve_wins": 0,
             "attack": 0, "neutral": 0, "safe": 0,
             "strokes": 0,
             "backhand_true": 0,
@@ -214,10 +220,6 @@ def process_match(match_folder: Path, num_sets: int) -> dict:
             "lost_rallies": 0,
             "net_error_lost": 0,
             "out_error_lost": 0,
-            "short_serve_samples": 0,
-            "short_serve_wins": 0,
-            "long_serve_samples": 0,
-            "long_serve_wins": 0,
         }
         for side in ("A", "B")
     }
@@ -252,6 +254,11 @@ def process_match(match_folder: Path, num_sets: int) -> dict:
         "counts": agg,
         "total_points": total_points,
         "games_won": games_won,
+        "rallies": {
+            "count": int(rally_context["rally_count"]),
+            "len_sum": float(rally_context["rally_len_total"]),
+            "long_count": int(rally_context["long_rally_count"]),
+        },
         "rally_context": rally_context,
     }
 
@@ -286,10 +293,30 @@ def compute_rates(counts: dict) -> dict:
     }
 
 
-def _safe_rate(numerator: int | float, denominator: int | float, default: float) -> float:
-    if denominator <= 0:
-        return default
-    return float(numerator) / float(denominator)
+def compute_enriched_rates(counts: dict) -> dict:
+    """Compute extended tactical/context rates with deterministic defaults."""
+    strokes = int(counts["strokes"])
+    lost_rallies = int(counts["lost_rallies"])
+    short_samples = int(counts["short_serve_samples"])
+    long_samples = int(counts["long_serve_samples"])
+
+    backhand_rate = (counts["backhand_true"] / strokes) if strokes > 0 else 0.0
+    aroundhead_rate = (counts["aroundhead_true"] / strokes) if strokes > 0 else 0.0
+    net_error_lost_rate = (counts["net_error_lost"] / lost_rallies) if lost_rallies > 0 else 0.0
+    out_error_lost_rate = (counts["out_error_lost"] / lost_rallies) if lost_rallies > 0 else 0.0
+    short_serve_win_rate = (counts["short_serve_wins"] / short_samples) if short_samples > 0 else 0.5
+    long_serve_win_rate = (counts["long_serve_wins"] / long_samples) if long_samples > 0 else 0.5
+
+    return {
+        "backhand_rate": round(float(backhand_rate), 4),
+        "aroundhead_rate": round(float(aroundhead_rate), 4),
+        "net_error_lost_rate": round(float(net_error_lost_rate), 4),
+        "out_error_lost_rate": round(float(out_error_lost_rate), 4),
+        "short_serve_win_rate": round(float(short_serve_win_rate), 4),
+        "long_serve_win_rate": round(float(long_serve_win_rate), 4),
+        "short_serve_samples": short_samples,
+        "long_serve_samples": long_samples,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -339,6 +366,10 @@ def build_data(set_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
         loser = str(match_row["loser"])
         num_sets = int(match_row["set"])
         date = f"{int(match_row['year']):04d}-{int(match_row['month']):02d}-{int(match_row['day']):02d}"
+        tournament = str(match_row["tournament"])
+        round_name = str(match_row["round"])
+        duration_min = int(match_row["duration"])
+        match_sets = int(match_row["set"])
 
         all_player_names.add(winner)
         all_player_names.add(loser)
@@ -372,6 +403,15 @@ def build_data(set_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
 
         pa_rates = compute_rates(pa_counts)
         pb_rates = compute_rates(pb_counts)
+        pa_enriched = compute_enriched_rates(pa_counts)
+        pb_enriched = compute_enriched_rates(pb_counts)
+        total_rallies = int(result["rally_context"]["rally_count"])
+        if total_rallies > 0:
+            avg_rally_len = round(float(result["rally_context"]["rally_len_total"] / total_rallies), 4)
+            long_rally_share = round(float(result["rally_context"]["long_rally_count"] / total_rallies), 4)
+        else:
+            avg_rally_len = 0.0
+            long_rally_share = 0.0
 
         match_rows.append({
             "date": date,
@@ -396,78 +436,28 @@ def build_data(set_dir: Path) -> tuple[pd.DataFrame, pd.DataFrame]:
             "b_attack_rate": pb_rates["attack_rate"],
             "b_neutral_rate": pb_rates["neutral_rate"],
             "b_safe_rate": pb_rates["safe_rate"],
-            "tournament": str(match_row["tournament"]),
-            "round": str(match_row["round"]),
-            "duration_min": int(match_row["duration"]),
-            "match_sets": num_sets,
-            "avg_rally_len": round(
-                _safe_rate(
-                    result["rally_context"]["rally_len_total"],
-                    result["rally_context"]["rally_count"],
-                    default=0.0,
-                ),
-                4,
-            ),
-            "long_rally_share": round(
-                _safe_rate(
-                    result["rally_context"]["long_rally_count"],
-                    result["rally_context"]["rally_count"],
-                    default=0.0,
-                ),
-                4,
-            ),
-            "a_backhand_rate": round(
-                _safe_rate(pa_counts["backhand_true"], pa_counts["strokes"], default=0.0),
-                4,
-            ),
-            "b_backhand_rate": round(
-                _safe_rate(pb_counts["backhand_true"], pb_counts["strokes"], default=0.0),
-                4,
-            ),
-            "a_aroundhead_rate": round(
-                _safe_rate(pa_counts["aroundhead_true"], pa_counts["strokes"], default=0.0),
-                4,
-            ),
-            "b_aroundhead_rate": round(
-                _safe_rate(pb_counts["aroundhead_true"], pb_counts["strokes"], default=0.0),
-                4,
-            ),
-            "a_net_error_lost_rate": round(
-                _safe_rate(pa_counts["net_error_lost"], pa_counts["lost_rallies"], default=0.0),
-                4,
-            ),
-            "b_net_error_lost_rate": round(
-                _safe_rate(pb_counts["net_error_lost"], pb_counts["lost_rallies"], default=0.0),
-                4,
-            ),
-            "a_out_error_lost_rate": round(
-                _safe_rate(pa_counts["out_error_lost"], pa_counts["lost_rallies"], default=0.0),
-                4,
-            ),
-            "b_out_error_lost_rate": round(
-                _safe_rate(pb_counts["out_error_lost"], pb_counts["lost_rallies"], default=0.0),
-                4,
-            ),
-            "a_short_serve_win_rate": round(
-                _safe_rate(pa_counts["short_serve_wins"], pa_counts["short_serve_samples"], default=0.5),
-                4,
-            ),
-            "b_short_serve_win_rate": round(
-                _safe_rate(pb_counts["short_serve_wins"], pb_counts["short_serve_samples"], default=0.5),
-                4,
-            ),
-            "a_long_serve_win_rate": round(
-                _safe_rate(pa_counts["long_serve_wins"], pa_counts["long_serve_samples"], default=0.5),
-                4,
-            ),
-            "b_long_serve_win_rate": round(
-                _safe_rate(pb_counts["long_serve_wins"], pb_counts["long_serve_samples"], default=0.5),
-                4,
-            ),
-            "a_short_serve_samples": int(pa_counts["short_serve_samples"]),
-            "b_short_serve_samples": int(pb_counts["short_serve_samples"]),
-            "a_long_serve_samples": int(pa_counts["long_serve_samples"]),
-            "b_long_serve_samples": int(pb_counts["long_serve_samples"]),
+            "tournament": tournament,
+            "round": round_name,
+            "duration_min": duration_min,
+            "match_sets": match_sets,
+            "avg_rally_len": avg_rally_len,
+            "long_rally_share": long_rally_share,
+            "a_backhand_rate": pa_enriched["backhand_rate"],
+            "b_backhand_rate": pb_enriched["backhand_rate"],
+            "a_aroundhead_rate": pa_enriched["aroundhead_rate"],
+            "b_aroundhead_rate": pb_enriched["aroundhead_rate"],
+            "a_net_error_lost_rate": pa_enriched["net_error_lost_rate"],
+            "b_net_error_lost_rate": pb_enriched["net_error_lost_rate"],
+            "a_out_error_lost_rate": pa_enriched["out_error_lost_rate"],
+            "b_out_error_lost_rate": pb_enriched["out_error_lost_rate"],
+            "a_short_serve_win_rate": pa_enriched["short_serve_win_rate"],
+            "b_short_serve_win_rate": pb_enriched["short_serve_win_rate"],
+            "a_long_serve_win_rate": pa_enriched["long_serve_win_rate"],
+            "b_long_serve_win_rate": pb_enriched["long_serve_win_rate"],
+            "a_short_serve_samples": pa_enriched["short_serve_samples"],
+            "b_short_serve_samples": pb_enriched["short_serve_samples"],
+            "a_long_serve_samples": pa_enriched["long_serve_samples"],
+            "b_long_serve_samples": pb_enriched["long_serve_samples"],
         })
 
     players_df = build_player_registry(all_player_names)
@@ -543,7 +533,7 @@ def validate(players_df: pd.DataFrame, matches_df: pd.DataFrame) -> None:
             "a_attack_rate", "a_neutral_rate", "a_safe_rate",
             "b_short_serve_rate", "b_flick_serve_rate",
             "b_attack_rate", "b_neutral_rate", "b_safe_rate",
-            "long_rally_share",
+            "avg_rally_len", "long_rally_share",
             "a_backhand_rate", "b_backhand_rate",
             "a_aroundhead_rate", "b_aroundhead_rate",
             "a_net_error_lost_rate", "b_net_error_lost_rate",
@@ -552,15 +542,11 @@ def validate(players_df: pd.DataFrame, matches_df: pd.DataFrame) -> None:
             "a_long_serve_win_rate", "b_long_serve_win_rate",
         ]
         for col in rate_cols:
-            if not (0.0 <= row[col] <= 1.0):
+            if col == "avg_rally_len":
+                if row[col] < 0.0:
+                    errors.append(f"Row {idx}: {col}={row[col]} must be >= 0")
+            elif not (0.0 <= row[col] <= 1.0):
                 errors.append(f"Row {idx}: {col}={row[col]} out of [0, 1]")
-
-        if row["avg_rally_len"] < 0.0:
-            errors.append(f"Row {idx}: avg_rally_len={row['avg_rally_len']} must be >= 0")
-        if row["duration_min"] <= 0:
-            errors.append(f"Row {idx}: duration_min={row['duration_min']} must be > 0")
-        if row["match_sets"] not in (2, 3):
-            errors.append(f"Row {idx}: match_sets={row['match_sets']} must be 2 or 3")
 
         sample_cols = [
             "a_short_serve_samples",
@@ -569,17 +555,22 @@ def validate(players_df: pd.DataFrame, matches_df: pd.DataFrame) -> None:
             "b_long_serve_samples",
         ]
         for col in sample_cols:
-            value = row[col]
+            value = float(row[col])
             if value < 0:
-                errors.append(f"Row {idx}: {col}={value} must be >= 0")
-            if float(value) % 1 != 0:
-                errors.append(f"Row {idx}: {col}={value} must be an integer")
+                errors.append(f"Row {idx}: {col}={row[col]} must be >= 0")
+            if not value.is_integer():
+                errors.append(f"Row {idx}: {col}={row[col]} must be an integer")
 
         # Serve wins <= serve rallies
         if row["a_serve_wins"] > row["a_serve_rallies"]:
             errors.append(f"Row {idx}: a_serve_wins > a_serve_rallies")
         if row["b_serve_wins"] > row["b_serve_rallies"]:
             errors.append(f"Row {idx}: b_serve_wins > b_serve_rallies")
+
+        if int(row["match_sets"]) < 1:
+            errors.append(f"Row {idx}: match_sets must be >= 1")
+        if int(row["duration_min"]) <= 0:
+            errors.append(f"Row {idx}: duration_min must be > 0")
 
     if errors:
         for e in errors:

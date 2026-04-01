@@ -65,6 +65,9 @@ class StrategyCandidate:
     unforced_error_delta: float
     return_pressure_delta: float
     clutch_delta: float
+    serve_effectiveness_delta: float
+    error_profile_delta: float
+    rally_tolerance_delta: float
     l1_change: float
     probability: float
 
@@ -212,6 +215,9 @@ class BadmintonCoachService:
                 unforced_error_delta=candidate["unforced_error_delta"],
                 return_pressure_delta=candidate["return_pressure_delta"],
                 clutch_delta=candidate["clutch_delta"],
+                serve_effectiveness_delta=candidate["serve_effectiveness_delta"],
+                error_profile_delta=candidate["error_profile_delta"],
+                rally_tolerance_delta=candidate["rally_tolerance_delta"],
             )
 
             cand_path = candidate_dir / f"candidate_{idx:03d}.pcsp"
@@ -242,6 +248,15 @@ class BadmintonCoachService:
                         - params.player_a.unforced_error_rate,
                         return_pressure_delta=adjusted.player_a.return_pressure - params.player_a.return_pressure,
                         clutch_delta=adjusted.player_a.clutch_point_win - params.player_a.clutch_point_win,
+                        serve_effectiveness_delta=(
+                            adjusted.player_a.short_serve_skill - params.player_a.short_serve_skill
+                        ),
+                        error_profile_delta=(
+                            params.player_a.net_error_rate - adjusted.player_a.net_error_rate
+                        ),
+                        rally_tolerance_delta=(
+                            adjusted.player_a.rally_tolerance - params.player_a.rally_tolerance
+                        ),
                         l1_change=adjusted.l1_change_from(params),
                         probability=pat_exec.probability,
                     ),
@@ -267,6 +282,9 @@ class BadmintonCoachService:
                 unforced_error_delta=c.unforced_error_delta,
                 return_pressure_delta=c.return_pressure_delta,
                 clutch_delta=c.clutch_delta,
+                serve_effectiveness_delta=c.serve_effectiveness_delta,
+                error_profile_delta=c.error_profile_delta,
+                rally_tolerance_delta=c.rally_tolerance_delta,
                 l1_change=c.l1_change,
                 probability=c.probability,
             )
@@ -352,6 +370,9 @@ class BadmintonCoachService:
             "unforced_error_delta": [-0.06, -0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04, 0.06],
             "return_pressure_delta": [-0.06, -0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04, 0.06],
             "clutch_delta": [-0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04],
+            "serve_effectiveness_delta": [-0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04],
+            "error_profile_delta": [-0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04],
+            "rally_tolerance_delta": [-0.04, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.04],
         }
         pair_knobs = [
             ("serve_short_delta", "attack_delta"),
@@ -360,6 +381,9 @@ class BadmintonCoachService:
             ("attack_delta", "unforced_error_delta"),
             ("attack_delta", "clutch_delta"),
             ("return_pressure_delta", "clutch_delta"),
+            ("serve_effectiveness_delta", "error_profile_delta"),
+            ("serve_effectiveness_delta", "rally_tolerance_delta"),
+            ("error_profile_delta", "rally_tolerance_delta"),
         ]
         pair_steps = {k: [d for d in values if abs(d) <= 0.03] for k, values in knob_steps.items()}
 
@@ -384,6 +408,9 @@ class BadmintonCoachService:
                 unforced_error_delta=payload["unforced_error_delta"],
                 return_pressure_delta=payload["return_pressure_delta"],
                 clutch_delta=payload["clutch_delta"],
+                serve_effectiveness_delta=payload["serve_effectiveness_delta"],
+                error_profile_delta=payload["error_profile_delta"],
+                rally_tolerance_delta=payload["rally_tolerance_delta"],
             )
             l1 = adjusted.l1_change_from(baseline)
             if l1 <= l1_bound + 1e-9:
@@ -520,6 +547,9 @@ class BadmintonCoachService:
                     "unforced_error_delta",
                     "return_pressure_delta",
                     "clutch_delta",
+                    "serve_effectiveness_delta",
+                    "error_profile_delta",
+                    "rally_tolerance_delta",
                     "l1_change",
                     "probability",
                 ],

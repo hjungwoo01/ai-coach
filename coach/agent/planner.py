@@ -335,5 +335,8 @@ class AgentExecutor:
             f"attack style {best['attack_delta']:+.1%}, "
             f"unforced-error proxy {best.get('unforced_error_delta', 0.0):+.1%}, "
             f"return pressure {best.get('return_pressure_delta', 0.0):+.1%}, "
-            f"and clutch-point win {best.get('clutch_delta', 0.0):+.1%}."
+            f"clutch-point win {best.get('clutch_delta', 0.0):+.1%}, "
+            f"serve effectiveness {best.get('serve_effectiveness_delta', 0.0):+.1%}, "
+            f"error profile {best.get('error_profile_delta', 0.0):+.1%}, "
+            f"and rally tolerance {best.get('rally_tolerance_delta', 0.0):+.1%}."
         )

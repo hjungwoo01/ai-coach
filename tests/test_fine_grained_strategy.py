@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from coach.data.adapters.local_csv import LocalCSVAdapter
-from coach.data.stats_builder import build_matchup_params
+from coach.data.stats_builder import build_matchup_params, estimate_influence_weights
 from coach.service import BadmintonCoachService
 
 
@@ -15,6 +15,14 @@ def test_local_stats_include_fine_grained_metrics() -> None:
     assert 0.01 <= float(stats["unforced_error_rate"]) <= 0.6
     assert 0.01 <= float(stats["return_pressure"]) <= 0.99
     assert 0.01 <= float(stats["clutch_point_win"]) <= 0.99
+    assert 0.01 <= float(stats["short_serve_skill"]) <= 0.99
+    assert 0.01 <= float(stats["long_serve_skill"]) <= 0.99
+    assert 0.01 <= float(stats["rally_tolerance"]) <= 0.99
+    assert 0.0 <= float(stats["net_error_rate"]) <= 1.0
+    assert 0.0 <= float(stats["out_error_rate"]) <= 1.0
+    assert 0.0 <= float(stats["backhand_rate"]) <= 1.0
+    assert 0.0 <= float(stats["aroundhead_rate"]) <= 1.0
+    assert 0.0 <= float(stats["reliability"]) <= 1.0
 
 
 def test_unforced_error_proxy_supports_vectorized_inputs() -> None:
@@ -105,6 +113,9 @@ def test_strategy_candidate_generator_has_micro_steps_and_new_knobs(tmp_path) ->
     assert all("unforced_error_delta" in c for c in candidates)
     assert all("return_pressure_delta" in c for c in candidates)
     assert all("clutch_delta" in c for c in candidates)
+    assert all("serve_effectiveness_delta" in c for c in candidates)
+    assert all("error_profile_delta" in c for c in candidates)
+    assert all("rally_tolerance_delta" in c for c in candidates)
     assert all("l1_change" in c for c in candidates)
 
     assert any(abs(c["serve_short_delta"]) == 0.01 for c in candidates)
@@ -112,4 +123,16 @@ def test_strategy_candidate_generator_has_micro_steps_and_new_knobs(tmp_path) ->
     assert any(abs(c["unforced_error_delta"]) == 0.01 for c in candidates)
     assert any(abs(c["return_pressure_delta"]) == 0.01 for c in candidates)
     assert any(abs(c["clutch_delta"]) == 0.01 for c in candidates)
+    assert any(abs(c["serve_effectiveness_delta"]) == 0.01 for c in candidates)
+    assert any(abs(c["error_profile_delta"]) == 0.01 for c in candidates)
+    assert any(abs(c["rally_tolerance_delta"]) == 0.01 for c in candidates)
     assert [c["l1_change"] for c in candidates] == sorted(c["l1_change"] for c in candidates)
+
+
+def test_estimated_weights_include_calibrated_rally_tolerance_and_stroke_terms() -> None:
+    adapter = LocalCSVAdapter()
+    weights = estimate_influence_weights(adapter)
+
+    assert 0.0 <= float(weights.w_rally_tolerance) <= 0.08
+    assert 0.0 <= float(weights.w_backhand) <= 0.08
+    assert 0.0 <= float(weights.w_aroundhead) <= 0.08

@@ -67,7 +67,10 @@ def command_strategy(args: argparse.Namespace) -> None:
         f"rally_style.attack {result.best_candidate.attack_delta:+.3f}, "
         f"unforced_error_rate {result.best_candidate.unforced_error_delta:+.3f}, "
         f"return_pressure {result.best_candidate.return_pressure_delta:+.3f}, "
-        f"clutch_point_win {result.best_candidate.clutch_delta:+.3f}"
+        f"clutch_point_win {result.best_candidate.clutch_delta:+.3f}, "
+        f"serve_effectiveness {result.best_candidate.serve_effectiveness_delta:+.3f}, "
+        f"error_profile {result.best_candidate.error_profile_delta:+.3f}, "
+        f"rally_tolerance {result.best_candidate.rally_tolerance_delta:+.3f}"
     )
 
     print("top_alternatives:")
@@ -79,6 +82,9 @@ def command_strategy(args: argparse.Namespace) -> None:
             f"unforced_error_delta={cand.unforced_error_delta:+.3f} "
             f"return_pressure_delta={cand.return_pressure_delta:+.3f} "
             f"clutch_delta={cand.clutch_delta:+.3f} "
+            f"serve_effectiveness_delta={cand.serve_effectiveness_delta:+.3f} "
+            f"error_profile_delta={cand.error_profile_delta:+.3f} "
+            f"rally_tolerance_delta={cand.rally_tolerance_delta:+.3f} "
             f"l1={cand.l1_change:.3f}"
         )
 

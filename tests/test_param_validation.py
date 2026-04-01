@@ -105,3 +105,74 @@ def test_best_of_must_be_odd() -> None:
             weights=InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05),
             best_of=2,
         )
+
+
+def test_reliability_scaling_damps_new_feature_edges() -> None:
+    player_a = make_player("a", "Player A").model_copy(
+        update={
+            "short_serve_skill": 0.8,
+            "long_serve_skill": 0.75,
+            "rally_tolerance": 0.7,
+            "net_error_rate": 0.05,
+            "out_error_rate": 0.08,
+            "reliability": 1.0,
+        }
+    )
+    player_b = make_player("b", "Player B").model_copy(
+        update={
+            "short_serve_skill": 0.35,
+            "long_serve_skill": 0.4,
+            "rally_tolerance": 0.45,
+            "net_error_rate": 0.2,
+            "out_error_rate": 0.18,
+            "reliability": 1.0,
+        }
+    )
+    high_rel = MatchupParams(
+        player_a=player_a,
+        player_b=player_b,
+        weights=InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05, w_serve_type=0.08, w_error_profile=0.08),
+    )
+    low_rel = MatchupParams(
+        player_a=player_a.model_copy(update={"reliability": 0.1}),
+        player_b=player_b.model_copy(update={"reliability": 0.1}),
+        weights=InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05, w_serve_type=0.08, w_error_profile=0.08),
+    )
+
+    assert high_rel.effective_probabilities()["pA_srv_win"] > low_rel.effective_probabilities()["pA_srv_win"]
+    assert high_rel.effective_probabilities()["pA_rcv_win"] > low_rel.effective_probabilities()["pA_rcv_win"]
+
+
+def test_handedness_edge_is_directional_and_bounded() -> None:
+    base_weights = InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05, w_handedness=0.08)
+    all_right = MatchupParams(
+        player_a=make_player("a", "Player A").model_copy(update={"handedness_flag": 0.0}),
+        player_b=make_player("b", "Player B").model_copy(update={"handedness_flag": 0.0}),
+        weights=base_weights,
+    )
+    a_left_vs_right = MatchupParams(
+        player_a=make_player("a", "Player A").model_copy(update={"handedness_flag": 1.0}),
+        player_b=make_player("b", "Player B").model_copy(update={"handedness_flag": 0.0}),
+        weights=base_weights,
+    )
+
+    assert a_left_vs_right.effective_probabilities()["pA_srv_win"] >= all_right.effective_probabilities()["pA_srv_win"]
+    assert a_left_vs_right.effective_probabilities()["pA_rcv_win"] >= all_right.effective_probabilities()["pA_rcv_win"]
+    assert 0.01 <= a_left_vs_right.effective_probabilities()["pA_srv_win"] <= 0.99
+    assert 0.01 <= a_left_vs_right.effective_probabilities()["pA_rcv_win"] <= 0.99
+
+
+def test_stroke_profile_edges_influence_probabilities() -> None:
+    baseline = MatchupParams(
+        player_a=make_player("a", "Player A").model_copy(update={"backhand_rate": 0.45, "aroundhead_rate": 0.05}),
+        player_b=make_player("b", "Player B").model_copy(update={"backhand_rate": 0.45, "aroundhead_rate": 0.05}),
+        weights=InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05, w_backhand=0.08, w_aroundhead=0.08),
+    )
+    improved = MatchupParams(
+        player_a=make_player("a", "Player A").model_copy(update={"backhand_rate": 0.25, "aroundhead_rate": 0.18}),
+        player_b=make_player("b", "Player B").model_copy(update={"backhand_rate": 0.45, "aroundhead_rate": 0.05}),
+        weights=InfluenceWeights(w_short=0.04, w_attack=0.06, w_safe=0.05, w_backhand=0.08, w_aroundhead=0.08),
+    )
+
+    assert improved.effective_probabilities()["pA_srv_win"] > baseline.effective_probabilities()["pA_srv_win"]
+    assert improved.effective_probabilities()["pA_rcv_win"] > baseline.effective_probabilities()["pA_rcv_win"]
