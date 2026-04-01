@@ -138,9 +138,9 @@ class TimeMachineBacktester:
         }
 
         for row in prepared.itertuples(index=False):
-            cutoff_str = pd.Timestamp(row.cutoff_timestamp).strftime("%Y-%m-%d")
+            cutoff_key = str(row.cutoff_key)
             snapshot_adapter = self._get_snapshot_adapter(
-                cutoff_key=str(row.cutoff_key),
+                cutoff_key=cutoff_key,
                 cutoff_timestamp=pd.Timestamp(row.cutoff_timestamp),
             )
             try:
@@ -149,7 +149,7 @@ class TimeMachineBacktester:
                     player_a_ref=str(row.playerA_id),
                     player_b_ref=str(row.playerB_id),
                     window=self.config.window,
-                    as_of_date=cutoff_str,
+                    as_of_date=cutoff_key,
                     allow_cold_start=True,
                 )
             except ValueError as exc:

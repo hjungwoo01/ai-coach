@@ -252,3 +252,59 @@ def test_time_machine_backtester_scores_matches_with_cold_start_players(tmp_path
     assert report.metrics["matches_scored"] == 2
     assert report.metrics["matches_skipped"] == 0
     assert report.metrics["coverage"] == 1.0
+
+
+def test_time_machine_backtester_preserves_same_day_history_for_exact_timestamps(tmp_path: Path) -> None:
+    players = pd.DataFrame(
+        [
+            {"player_id": "a", "name": "Player A", "country": "X", "handedness": "R"},
+            {"player_id": "b", "name": "Player B", "country": "Y", "handedness": "L"},
+            {"player_id": "c", "name": "Player C", "country": "Z", "handedness": "R"},
+        ]
+    )
+    matches = pd.DataFrame(
+        [
+            {
+                **_synthetic_match(
+                    date="2024-01-10T09:00:00",
+                    player_a="a",
+                    player_b="b",
+                    winner_id="a",
+                    round_name="Round 1",
+                ),
+                "match_start_ts": "2024-01-10T09:00:00",
+            },
+            {
+                **_synthetic_match(
+                    date="2024-01-10T12:00:00",
+                    player_a="a",
+                    player_b="c",
+                    winner_id="a",
+                    round_name="Quarter-finals",
+                ),
+                "match_start_ts": "2024-01-10T12:00:00",
+            },
+        ]
+    )
+
+    players_path = tmp_path / "players.csv"
+    matches_path = tmp_path / "matches.csv"
+    players.to_csv(players_path, index=False)
+    matches.to_csv(matches_path, index=False)
+
+    backtester = TimeMachineBacktester.from_paths(
+        players_path=players_path,
+        matches_path=matches_path,
+        config=BacktestConfig(
+            mode="mock",
+            window=30,
+            timestamp_column="match_start_ts",
+        ),
+        runs_root=tmp_path / "runs",
+    )
+
+    report = backtester.run()
+
+    target_row = report.predictions.loc[report.predictions["match_id"] == "1"].iloc[0]
+    assert target_row["snapshot_policy"] == "exact_timestamp"
+    assert int(target_row["player_a_history_matches"]) == 1
