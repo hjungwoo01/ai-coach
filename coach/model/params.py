@@ -84,6 +84,8 @@ class InfluenceWeights(BaseModel):
     w_handedness: float = Field(default=0.01, ge=0.0, le=0.08)
     w_backhand: float = Field(default=0.01, ge=0.0, le=0.08)
     w_aroundhead: float = Field(default=0.01, ge=0.0, le=0.08)
+    w_recent_form: float = Field(default=0.06, ge=0.0, le=0.12)
+    w_rest: float = Field(default=0.03, ge=0.0, le=0.1)
 
 
 class PlayerParams(BaseModel):
@@ -105,6 +107,8 @@ class PlayerParams(BaseModel):
     aroundhead_rate: float = Field(default=0.0, ge=0.0, le=1.0)
     handedness_flag: float = Field(default=0.0, ge=0.0, le=1.0)
     reliability: float = Field(default=1.0, ge=0.0, le=1.0)
+    recent_form: float = Field(default=0.5, ge=0.01, le=0.99)
+    rest_days: float = Field(default=7.0, ge=0.0, le=90.0)
     serve_mix: ServeMix
     rally_style: RallyStyleMix
     sample_matches: int = Field(default=0, ge=0)
@@ -169,12 +173,34 @@ class MatchupParams(BaseModel):
             "handedness_edge": handedness_edge,
             "backhand_edge": b.backhand_rate - a.backhand_rate,
             "aroundhead_edge": a.aroundhead_rate - b.aroundhead_rate,
+            "recent_form_edge": a.recent_form - b.recent_form,
+            "rest_edge": clamp((a.rest_days - b.rest_days) / 14.0, low=-1.0, high=1.0),
         }
 
     def _new_feature_reliability_scale(self) -> float:
         a = self.player_a
         b = self.player_b
         return clamp(min(a.reliability, b.reliability), low=0.0, high=1.0)
+
+    @staticmethod
+    def _blend_phase_baseline(
+        own_win_rate: float,
+        opponent_win_rate: float,
+        own_reliability: float,
+        opponent_reliability: float,
+    ) -> float:
+        own_rel = clamp(own_reliability, low=0.0, high=1.0)
+        opp_rel = clamp(opponent_reliability, low=0.0, high=1.0)
+
+        own_weight = 0.35 + (0.65 * own_rel)
+        opponent_weight = 0.35 + (0.65 * opp_rel)
+        opponent_complement = 1.0 - opponent_win_rate
+        blended = (
+            (own_weight * own_win_rate) + (opponent_weight * opponent_complement)
+        ) / (own_weight + opponent_weight)
+
+        confidence = 0.5 * (own_rel + opp_rel)
+        return clamp(0.5 + confidence * (blended - 0.5))
 
     def effective_probabilities(self) -> dict[str, float]:
         a = self.player_a
@@ -189,6 +215,8 @@ class MatchupParams(BaseModel):
             + self.weights.w_ue * edges["ue_edge"]
             + scales.serve_return_pressure * self.weights.w_return_pressure * edges["return_edge"]
             + self.weights.w_clutch * edges["clutch_edge"]
+            + self.weights.w_recent_form * edges["recent_form_edge"]
+            + self.weights.w_rest * edges["rest_edge"]
             + new_scale
             * (
                 scales.serve_serve_type * self.weights.w_serve_type * edges["serve_type_edge"]
@@ -209,6 +237,8 @@ class MatchupParams(BaseModel):
             + scales.receive_ue * self.weights.w_ue * edges["ue_edge"]
             + scales.receive_return_pressure * self.weights.w_return_pressure * edges["return_edge"]
             + scales.receive_clutch * self.weights.w_clutch * edges["clutch_edge"]
+            + 0.8 * self.weights.w_recent_form * edges["recent_form_edge"]
+            + 0.6 * self.weights.w_rest * edges["rest_edge"]
             + new_scale
             * (
                 scales.receive_serve_type * self.weights.w_serve_type * edges["serve_type_edge"]
@@ -220,8 +250,21 @@ class MatchupParams(BaseModel):
             )
         )
 
-        p_a_srv = clamp(a.base_srv_win + serve_delta)
-        p_a_rcv = clamp(a.base_rcv_win + receive_delta)
+        serve_baseline = self._blend_phase_baseline(
+            own_win_rate=a.base_srv_win,
+            opponent_win_rate=b.base_rcv_win,
+            own_reliability=a.reliability,
+            opponent_reliability=b.reliability,
+        )
+        receive_baseline = self._blend_phase_baseline(
+            own_win_rate=a.base_rcv_win,
+            opponent_win_rate=b.base_srv_win,
+            own_reliability=a.reliability,
+            opponent_reliability=b.reliability,
+        )
+
+        p_a_srv = clamp(serve_baseline + serve_delta)
+        p_a_rcv = clamp(receive_baseline + receive_delta)
 
         return {
             "pA_srv_win": p_a_srv,
@@ -335,6 +378,10 @@ class MatchupParams(BaseModel):
             "handedness_flag_B": f"{self.player_b.handedness_flag:.6f}",
             "reliability_A": f"{self.player_a.reliability:.6f}",
             "reliability_B": f"{self.player_b.reliability:.6f}",
+            "recent_form_A": f"{self.player_a.recent_form:.6f}",
+            "recent_form_B": f"{self.player_b.recent_form:.6f}",
+            "rest_days_A": f"{self.player_a.rest_days:.6f}",
+            "rest_days_B": f"{self.player_b.rest_days:.6f}",
             "serve_mix_A_short": f"{self.player_a.serve_mix.short:.6f}",
             "serve_mix_A_flick": f"{self.player_a.serve_mix.flick:.6f}",
             "serve_mix_B_short": f"{self.player_b.serve_mix.short:.6f}",
@@ -357,6 +404,8 @@ class MatchupParams(BaseModel):
             "w_handedness": f"{self.weights.w_handedness:.6f}",
             "w_backhand": f"{self.weights.w_backhand:.6f}",
             "w_aroundhead": f"{self.weights.w_aroundhead:.6f}",
+            "w_recent_form": f"{self.weights.w_recent_form:.6f}",
+            "w_rest": f"{self.weights.w_rest:.6f}",
             "playerA_name": self.player_a.name,
             "playerB_name": self.player_b.name,
         }

@@ -23,6 +23,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
   "pytest>=8.0",
+  "ruff>=0.6",
 ]
 
 [project.scripts]
@@ -30,7 +31,11 @@ coach = "coach.cli:main"
 coach-batch-predict = "coach.analysis.batch_predict:main"
 coach-batch-strategy = "coach.analysis.batch_strategy:main"
 coach-experiments = "coach.analysis.experiments:main"
+coach-backtest = "coach.backtest.cli:main"
 
 [tool.setuptools.packages.find]
 include = ["coach*"]
 exclude = ["tests*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

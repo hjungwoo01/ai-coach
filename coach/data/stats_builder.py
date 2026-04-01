@@ -21,6 +21,25 @@ class MatchupStats:
     weights: InfluenceWeights
 
 
+def _default_influence_weights() -> InfluenceWeights:
+    return InfluenceWeights(
+        w_short=0.04,
+        w_attack=0.06,
+        w_safe=0.05,
+        w_ue=0.08,
+        w_return_pressure=0.07,
+        w_clutch=0.05,
+        w_serve_type=0.03,
+        w_rally_tolerance=0.02,
+        w_error_profile=0.03,
+        w_handedness=0.01,
+        w_backhand=0.01,
+        w_aroundhead=0.01,
+        w_recent_form=0.06,
+        w_rest=0.03,
+    )
+
+
 def _resolve_player(adapter: LocalCSVAdapter, player_ref: str) -> PlayerRecord:
     by_id = adapter.players_df[adapter.players_df["player_id"] == player_ref]
     if not by_id.empty:
@@ -35,22 +54,15 @@ def _resolve_player(adapter: LocalCSVAdapter, player_ref: str) -> PlayerRecord:
 
 
 def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
+    cached = getattr(adapter, "_influence_weights_cache", None)
+    if cached is not None:
+        return cached.model_copy(deep=True)
+
     df = adapter.matches_df.copy()
     if len(df) < 10:
-        return InfluenceWeights(
-            w_short=0.04,
-            w_attack=0.06,
-            w_safe=0.05,
-            w_ue=0.08,
-            w_return_pressure=0.07,
-            w_clutch=0.05,
-            w_serve_type=0.03,
-            w_rally_tolerance=0.02,
-            w_error_profile=0.03,
-            w_handedness=0.01,
-            w_backhand=0.01,
-            w_aroundhead=0.01,
-        )
+        weights = _default_influence_weights()
+        adapter._influence_weights_cache = weights
+        return weights.model_copy(deep=True)
 
     feature_rows: list[list[float]] = []
     targets: list[float] = []
@@ -91,24 +103,15 @@ def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
             float(a_stats["handedness_flag"]) - float(b_stats["handedness_flag"]),
             float(b_stats["backhand_rate"]) - float(a_stats["backhand_rate"]),
             float(a_stats["aroundhead_rate"]) - float(b_stats["aroundhead_rate"]),
+            float(a_stats.get("recent_form", 0.5)) - float(b_stats.get("recent_form", 0.5)),
+            max(-1.0, min(1.0, (float(a_stats.get("rest_days", 7.0)) - float(b_stats.get("rest_days", 7.0))) / 14.0)),
         ])
         targets.append((float(row.a_points) / total_points) - 0.5)
 
     if len(feature_rows) < 10:
-        return InfluenceWeights(
-            w_short=0.04,
-            w_attack=0.06,
-            w_safe=0.05,
-            w_ue=0.08,
-            w_return_pressure=0.07,
-            w_clutch=0.05,
-            w_serve_type=0.03,
-            w_rally_tolerance=0.02,
-            w_error_profile=0.03,
-            w_handedness=0.01,
-            w_backhand=0.01,
-            w_aroundhead=0.01,
-        )
+        weights = _default_influence_weights()
+        adapter._influence_weights_cache = weights
+        return weights.model_copy(deep=True)
 
     X = np.column_stack([
         np.ones(len(feature_rows), dtype=float),
@@ -135,8 +138,10 @@ def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
     w_handedness = float(np.clip(abs(beta[10]), 0.0, 0.08))
     w_backhand = float(np.clip(abs(beta[11]), 0.0, 0.08))
     w_aroundhead = float(np.clip(abs(beta[12]), 0.0, 0.08))
+    w_recent_form = float(np.clip(abs(beta[13]), 0.0, 0.12))
+    w_rest = float(np.clip(abs(beta[14]), 0.0, 0.1))
 
-    return InfluenceWeights(
+    weights = InfluenceWeights(
         w_short=w_short,
         w_attack=w_attack,
         w_safe=w_safe,
@@ -149,7 +154,11 @@ def estimate_influence_weights(adapter: LocalCSVAdapter) -> InfluenceWeights:
         w_handedness=w_handedness,
         w_backhand=w_backhand,
         w_aroundhead=w_aroundhead,
+        w_recent_form=w_recent_form,
+        w_rest=w_rest,
     )
+    adapter._influence_weights_cache = weights
+    return weights.model_copy(deep=True)
 
 
 def _build_player_params(stats: dict[str, Any], sample_matches: int) -> PlayerParams:
@@ -177,6 +186,8 @@ def _build_player_params(stats: dict[str, Any], sample_matches: int) -> PlayerPa
         aroundhead_rate=clamp(float(stats.get("aroundhead_rate", 0.0)), 0.0, 1.0),
         handedness_flag=clamp(float(stats.get("handedness_flag", 0.0)), 0.0, 1.0),
         reliability=clamp(float(stats.get("reliability", 1.0)), 0.0, 1.0),
+        recent_form=clamp(float(stats.get("recent_form", 0.5)), 0.01, 0.99),
+        rest_days=clamp(float(stats.get("rest_days", 7.0)), 0.0, 90.0),
         serve_mix=serve_mix,
         rally_style=rally_style,
         sample_matches=sample_matches,
@@ -189,6 +200,7 @@ def build_matchup_params(
     player_b_ref: str,
     window: int = 30,
     as_of_date: str | None = None,
+    allow_cold_start: bool = False,
 ) -> tuple[MatchupParams, MatchupStats]:
     player_a = _resolve_player(adapter, player_a_ref)
     player_b = _resolve_player(adapter, player_b_ref)
@@ -196,8 +208,18 @@ def build_matchup_params(
     if player_a.player_id == player_b.player_id:
         raise ValueError("Player A and Player B must be different players.")
 
-    a_stats = adapter.get_player_params(player_a.player_id, window=window, as_of_date=as_of_date)
-    b_stats = adapter.get_player_params(player_b.player_id, window=window, as_of_date=as_of_date)
+    a_stats = adapter.get_player_params(
+        player_a.player_id,
+        window=window,
+        as_of_date=as_of_date,
+        allow_cold_start=allow_cold_start,
+    )
+    b_stats = adapter.get_player_params(
+        player_b.player_id,
+        window=window,
+        as_of_date=as_of_date,
+        allow_cold_start=allow_cold_start,
+    )
     h2h = adapter.get_head_to_head(player_a.player_id, player_b.player_id, window=window, as_of_date=as_of_date)
     weights = estimate_influence_weights(adapter)
 

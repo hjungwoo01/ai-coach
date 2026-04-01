@@ -108,25 +108,15 @@ def test_strategy_candidate_generator_has_micro_steps_and_new_knobs(tmp_path) ->
 
     candidates = service._generate_candidates(baseline=baseline, l1_bound=0.35)
     assert candidates
-    assert all("serve_short_delta" in c for c in candidates)
-    assert all("attack_delta" in c for c in candidates)
-    assert all("unforced_error_delta" in c for c in candidates)
-    assert all("return_pressure_delta" in c for c in candidates)
-    assert all("clutch_delta" in c for c in candidates)
-    assert all("serve_effectiveness_delta" in c for c in candidates)
-    assert all("error_profile_delta" in c for c in candidates)
-    assert all("rally_tolerance_delta" in c for c in candidates)
-    assert all("l1_change" in c for c in candidates)
-
-    assert any(abs(c["serve_short_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["attack_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["unforced_error_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["return_pressure_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["clutch_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["serve_effectiveness_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["error_profile_delta"]) == 0.01 for c in candidates)
-    assert any(abs(c["rally_tolerance_delta"]) == 0.01 for c in candidates)
-    assert [c["l1_change"] for c in candidates] == sorted(c["l1_change"] for c in candidates)
+    assert any(abs(c.serve_short_delta) == 0.01 for c in candidates)
+    assert any(abs(c.attack_delta) == 0.01 for c in candidates)
+    assert any(abs(c.unforced_error_delta) == 0.01 for c in candidates)
+    assert any(abs(c.return_pressure_delta) == 0.01 for c in candidates)
+    assert any(abs(c.clutch_delta) == 0.01 for c in candidates)
+    assert any(abs(c.serve_effectiveness_delta) == 0.01 for c in candidates)
+    assert any(abs(c.error_profile_delta) == 0.01 for c in candidates)
+    assert any(abs(c.rally_tolerance_delta) == 0.01 for c in candidates)
+    assert [c.l1_change for c in candidates] == sorted(c.l1_change for c in candidates)
 
 
 def test_estimated_weights_include_calibrated_rally_tolerance_and_stroke_terms() -> None:

@@ -11,6 +11,7 @@ from coach.data.adapters.local_csv import LocalCSVAdapter
 from coach.data.stats_builder import MatchupStats, build_matchup_params
 from coach.model.builder import ModelBuildResult, build_matchup_model
 from coach.model.params import MatchupParams
+from coach.pat.mock_pat import mock_probability
 from coach.pat.parser import parse_probability, read_pat_output
 from coach.pat.runner import run_pat
 from coach.runs import new_run_dir
@@ -70,6 +71,43 @@ class StrategyCandidate:
     rally_tolerance_delta: float
     l1_change: float
     probability: float
+
+
+@dataclass(frozen=True)
+class StrategyAdjustment:
+    serve_short_delta: float = 0.0
+    attack_delta: float = 0.0
+    unforced_error_delta: float = 0.0
+    return_pressure_delta: float = 0.0
+    clutch_delta: float = 0.0
+    serve_effectiveness_delta: float = 0.0
+    error_profile_delta: float = 0.0
+    rally_tolerance_delta: float = 0.0
+    l1_change: float = 0.0
+
+    def apply_to(self, baseline: MatchupParams) -> MatchupParams:
+        return baseline.with_adjustments(
+            serve_short_delta=self.serve_short_delta,
+            attack_delta=self.attack_delta,
+            unforced_error_delta=self.unforced_error_delta,
+            return_pressure_delta=self.return_pressure_delta,
+            clutch_delta=self.clutch_delta,
+            serve_effectiveness_delta=self.serve_effectiveness_delta,
+            error_profile_delta=self.error_profile_delta,
+            rally_tolerance_delta=self.rally_tolerance_delta,
+        )
+
+    def as_key(self) -> tuple[float, ...]:
+        return (
+            round(self.serve_short_delta, 6),
+            round(self.attack_delta, 6),
+            round(self.unforced_error_delta, 6),
+            round(self.return_pressure_delta, 6),
+            round(self.clutch_delta, 6),
+            round(self.serve_effectiveness_delta, 6),
+            round(self.error_profile_delta, 6),
+            round(self.rally_tolerance_delta, 6),
+        )
 
 
 @dataclass(frozen=True)
@@ -202,24 +240,17 @@ class BadmintonCoachService:
             )
 
         candidates = self._generate_candidates(params, l1_bound=l1_bound)
-        candidates = candidates[: max(1, budget)]
+        selected_candidates = self._select_candidates_for_budget(
+            baseline=params,
+            candidates=candidates,
+            budget=budget,
+        )
 
         ranked: list[tuple[StrategyCandidate, MatchupParams]] = []
         candidate_dir = run_dir / "candidates"
         candidate_dir.mkdir(parents=True, exist_ok=True)
 
-        for idx, candidate in enumerate(candidates, start=1):
-            adjusted = params.with_adjustments(
-                serve_short_delta=candidate["serve_short_delta"],
-                attack_delta=candidate["attack_delta"],
-                unforced_error_delta=candidate["unforced_error_delta"],
-                return_pressure_delta=candidate["return_pressure_delta"],
-                clutch_delta=candidate["clutch_delta"],
-                serve_effectiveness_delta=candidate["serve_effectiveness_delta"],
-                error_profile_delta=candidate["error_profile_delta"],
-                rally_tolerance_delta=candidate["rally_tolerance_delta"],
-            )
-
+        for idx, (candidate, adjusted) in enumerate(selected_candidates, start=1):
             cand_path = candidate_dir / f"candidate_{idx:03d}.pcsp"
             build = build_matchup_model(
                 params=adjusted,
@@ -332,12 +363,14 @@ class BadmintonCoachService:
             use_mono=use_mono,
         )
 
-        probability: float | None = None
+        raw_probability = result.get("probability")
+        probability = float(raw_probability) if raw_probability is not None else None
         parse_error: str | None = None
-        try:
-            probability = parse_probability(read_pat_output(out_path))
-        except Exception as exc:
-            parse_error = str(exc)
+        if probability is None and out_path.exists():
+            try:
+                probability = parse_probability(read_pat_output(out_path))
+            except Exception as exc:
+                parse_error = str(exc)
 
         error = None
         if not result.get("ok", False):
@@ -363,7 +396,36 @@ class BadmintonCoachService:
             return run_id, run_dir
         return new_run_dir(prefix=prefix, base_dir=self.runs_root)
 
-    def _generate_candidates(self, baseline: MatchupParams, l1_bound: float) -> list[dict[str, float]]:
+    def _estimate_candidate_probability(self, params: MatchupParams) -> float:
+        return mock_probability(params.to_template_context())
+
+    def _select_candidates_for_budget(
+        self,
+        *,
+        baseline: MatchupParams,
+        candidates: list[StrategyAdjustment],
+        budget: int,
+    ) -> list[tuple[StrategyAdjustment, MatchupParams]]:
+        limit = max(1, budget)
+        if len(candidates) <= limit:
+            return [(candidate, candidate.apply_to(baseline)) for candidate in candidates]
+
+        prepared: list[tuple[float, float, StrategyAdjustment, MatchupParams]] = []
+        for candidate in candidates:
+            adjusted = candidate.apply_to(baseline)
+            prepared.append(
+                (
+                    self._estimate_candidate_probability(adjusted),
+                    adjusted.l1_change_from(baseline),
+                    candidate,
+                    adjusted,
+                )
+            )
+
+        prepared.sort(key=lambda item: (-item[0], item[1]))
+        return [(candidate, adjusted) for _, _, candidate, adjusted in prepared[:limit]]
+
+    def _generate_candidates(self, baseline: MatchupParams, l1_bound: float) -> list[StrategyAdjustment]:
         knob_steps: dict[str, list[float]] = {
             "serve_short_delta": [-0.08, -0.05, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.05, 0.08],
             "attack_delta": [-0.08, -0.05, -0.03, -0.02, -0.01, 0.01, 0.02, 0.03, 0.05, 0.08],
@@ -387,22 +449,14 @@ class BadmintonCoachService:
         ]
         pair_steps = {k: [d for d in values if abs(d) <= 0.03] for k, values in knob_steps.items()}
 
-        candidates: list[dict[str, float]] = []
+        candidates: list[StrategyAdjustment] = []
         seen: set[tuple[float, ...]] = set()
         ordered_knobs = list(knob_steps.keys())
 
-        def _make_payload(changes: dict[str, float]) -> dict[str, float]:
+        def _maybe_add(changes: dict[str, float]) -> None:
             payload = {k: 0.0 for k in ordered_knobs}
             payload.update(changes)
-            return payload
-
-        def _maybe_add(changes: dict[str, float]) -> None:
-            payload = _make_payload(changes)
-            key = tuple(round(payload[k], 6) for k in ordered_knobs)
-            if key in seen:
-                return
-
-            adjusted = baseline.with_adjustments(
+            candidate = StrategyAdjustment(
                 serve_short_delta=payload["serve_short_delta"],
                 attack_delta=payload["attack_delta"],
                 unforced_error_delta=payload["unforced_error_delta"],
@@ -412,10 +466,14 @@ class BadmintonCoachService:
                 error_profile_delta=payload["error_profile_delta"],
                 rally_tolerance_delta=payload["rally_tolerance_delta"],
             )
+            key = candidate.as_key()
+            if key in seen:
+                return
+
+            adjusted = candidate.apply_to(baseline)
             l1 = adjusted.l1_change_from(baseline)
             if l1 <= l1_bound + 1e-9:
-                payload["l1_change"] = l1
-                candidates.append(payload)
+                candidates.append(StrategyAdjustment(**{**candidate.__dict__, "l1_change": l1}))
                 seen.add(key)
 
         for knob, steps in knob_steps.items():
@@ -427,10 +485,19 @@ class BadmintonCoachService:
                 for delta_2 in pair_steps[knob_2]:
                     _maybe_add({knob_1: delta_1, knob_2: delta_2})
 
-        def _magnitude(candidate: dict[str, float]) -> float:
-            return sum(abs(candidate[k]) for k in ordered_knobs)
+        def _magnitude(candidate: StrategyAdjustment) -> float:
+            return (
+                abs(candidate.serve_short_delta)
+                + abs(candidate.attack_delta)
+                + abs(candidate.unforced_error_delta)
+                + abs(candidate.return_pressure_delta)
+                + abs(candidate.clutch_delta)
+                + abs(candidate.serve_effectiveness_delta)
+                + abs(candidate.error_profile_delta)
+                + abs(candidate.rally_tolerance_delta)
+            )
 
-        candidates.sort(key=lambda c: (c["l1_change"], _magnitude(c)))
+        candidates.sort(key=lambda c: (c.l1_change, _magnitude(c)))
         return candidates
 
     def _write_prediction_artifacts(self, result: PredictionResult, window: int, as_of_date: str | None) -> None:
