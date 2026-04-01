@@ -1,14 +1,18 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import datetime as dt
-from pathlib import Path
 import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Literal
 
 import pandas as pd
 
-from coach.backtest.data import create_snapshot_adapter, load_backtest_frames, prepare_chronological_matches
+from coach.backtest.data import (
+    create_snapshot_adapter,
+    load_backtest_frames,
+    prepare_chronological_matches,
+)
 from coach.backtest.feature_contract import write_feature_contract
 from coach.backtest.metrics import (
     calibration_summary_text,

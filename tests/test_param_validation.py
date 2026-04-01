@@ -3,7 +3,13 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from coach.model.params import InfluenceWeights, MatchupParams, PlayerParams, RallyStyleMix, ServeMix
+from coach.model.params import (
+    InfluenceWeights,
+    MatchupParams,
+    PlayerParams,
+    RallyStyleMix,
+    ServeMix,
+)
 
 
 def make_player(player_id: str, name: str) -> PlayerParams:

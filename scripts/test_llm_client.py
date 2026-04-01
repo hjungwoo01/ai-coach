@@ -5,11 +5,9 @@ Run from the repo root:
 """
 from __future__ import annotations
 
-import json
 import os
 import sys
 import textwrap
-import time
 import types as builtin_types
 import unittest.mock as mock
 
@@ -36,9 +34,6 @@ def ok(msg: str) -> None:
 
 def fail(msg: str) -> None:
     print(f"  [!!]  {msg}")
-
-
-
 
 # ---------------------------------------------------------------------------
 # Test 1 – real Gemini API call
@@ -102,7 +97,7 @@ def _make_offline_client(keys: list[str], start_index: int = 0) -> object:
 
 def test_rotation_simulation() -> None:
     section("Test 2: Circular key rotation simulation (offline)")
-    from coach.agent.llm_client import LLMClient, _is_quota_error
+    from coach.agent.llm_client import LLMClient
 
     # --- Scenario A: first 2 keys fail, third succeeds --------------------
     client = _make_offline_client(["KEY_A", "KEY_B", "KEY_C"])
@@ -127,7 +122,7 @@ def test_rotation_simulation() -> None:
 
     with mock.patch.object(LLMClient, "_advance", patched_advance):
         client_typed: LLMClient = client  # type: ignore[assignment]
-        result = client_typed._generate_with_rotation(contents="test", config=None)
+        client_typed._generate_with_rotation(contents="test", config=None)
 
     keys_tried = [["KEY_A", "KEY_B", "KEY_C"][i] for i in indices_visited]
     print(f"  Keys rotated : {keys_tried}  →  landed on {client_typed._keys[client_typed._index]}")

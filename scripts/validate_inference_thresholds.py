@@ -4,7 +4,13 @@ from __future__ import annotations
 import tempfile
 from pathlib import Path
 
-from coach.model.params import InfluenceWeights, MatchupParams, PlayerParams, RallyStyleMix, ServeMix
+from coach.model.params import (
+    InfluenceWeights,
+    MatchupParams,
+    PlayerParams,
+    RallyStyleMix,
+    ServeMix,
+)
 from coach.pat.mock_pat import mock_probability
 from coach.service import BadmintonCoachService
 

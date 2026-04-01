@@ -1,9 +1,8 @@
 from __future__ import annotations
 
+import math
 from collections import deque
 from dataclasses import dataclass, field
-import math
-from typing import Iterable
 
 import numpy as np
 

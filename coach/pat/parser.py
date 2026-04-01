@@ -3,7 +3,6 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-
 _PROB_CONTEXT_PATTERN = re.compile(r"(?is)(?:prob(?:ability)?|with\s+prob)")
 _NUMBER_PATTERN = re.compile(r"[+-]?(?:\d*\.\d+|\d+)(?:[eE][+-]?\d+)?")
 

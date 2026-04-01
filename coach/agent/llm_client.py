@@ -4,17 +4,14 @@ import json
 import logging
 import os
 import re
-import threading
-import urllib.error
-import urllib.request
 from typing import Any
 
 from coach.agent.prompts import SYSTEM_PROMPT, planner_prompt, summary_prompt
 
 try:
     from google import genai
-    from google.genai import types
     from google.api_core.exceptions import ResourceExhausted, TooManyRequests
+    from google.genai import types
 except Exception:  # pragma: no cover - optional dependency
     genai = None  # type: ignore[assignment]
     types = None  # type: ignore[assignment]

@@ -5,7 +5,13 @@ from pathlib import Path
 import pytest
 
 from coach.data.adapters.local_csv import LocalCSVAdapter
-from coach.model.params import InfluenceWeights, MatchupParams, PlayerParams, RallyStyleMix, ServeMix
+from coach.model.params import (
+    InfluenceWeights,
+    MatchupParams,
+    PlayerParams,
+    RallyStyleMix,
+    ServeMix,
+)
 from coach.service import BadmintonCoachService
 
 

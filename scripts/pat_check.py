@@ -1,9 +1,9 @@
 from __future__ import annotations
 
+import os
 import platform
 import subprocess
 import sys
-import os
 import tempfile
 from pathlib import Path
 
@@ -11,12 +11,11 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from coach.config import CoachConfig
-from coach.pat.parser import parse_probability, read_pat_output
-from coach.pat.runner import resolve_pat_console_path, run_pat
-
 
 def main() -> None:
+    from coach.config import CoachConfig
+    from coach.pat.runner import resolve_pat_console_path
+
     cfg = CoachConfig.from_env()
     os_name = platform.system()
     pat_path = cfg.pat_console_path
@@ -88,6 +87,9 @@ def main() -> None:
 
 
 def _run_smoke_check(*, pat_console_path: Path, use_mono: bool, timeout_s: int) -> None:
+    from coach.pat.parser import parse_probability, read_pat_output
+    from coach.pat.runner import run_pat
+
     minimal = REPO_ROOT / "examples" / "minimal.pcsp"
     if not minimal.exists():
         print("Skipped module smoke check: examples/minimal.pcsp not found.")

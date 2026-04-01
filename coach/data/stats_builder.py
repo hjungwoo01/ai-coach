@@ -7,7 +7,13 @@ import numpy as np
 import pandas as pd
 
 from coach.data.adapters.local_csv import LocalCSVAdapter, PlayerRecord
-from coach.model.params import InfluenceWeights, MatchupParams, PlayerParams, RallyStyleMix, ServeMix
+from coach.model.params import (
+    InfluenceWeights,
+    MatchupParams,
+    PlayerParams,
+    RallyStyleMix,
+    ServeMix,
+)
 from coach.utils import clamp
 
 

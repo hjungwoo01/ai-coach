@@ -6,7 +6,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-
 _TRUE_VALUES = {"1", "true", "yes", "y", "on"}
 _FALSE_VALUES = {"0", "false", "no", "n", "off"}
 

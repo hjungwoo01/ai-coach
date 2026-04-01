@@ -1,18 +1,17 @@
 from __future__ import annotations
 
+import shutil
+import zipfile
 from dataclasses import dataclass
 from pathlib import Path
-import shutil
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import urlopen
-import zipfile
 
 import pandas as pd
 
 from coach.data.adapters.local_csv import LocalCSVAdapter
 from scripts.build_real_data import build_data, validate
-
 
 _COACHAI_ARCHIVE_URLS = (
     "https://codeload.github.com/wywyWang/CoachAI-Projects/zip/refs/heads/main",

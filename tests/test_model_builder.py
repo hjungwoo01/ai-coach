@@ -3,7 +3,13 @@ from __future__ import annotations
 from pathlib import Path
 
 from coach.model.builder import build_matchup_model
-from coach.model.params import InfluenceWeights, MatchupParams, PlayerParams, RallyStyleMix, ServeMix
+from coach.model.params import (
+    InfluenceWeights,
+    MatchupParams,
+    PlayerParams,
+    RallyStyleMix,
+    ServeMix,
+)
 
 
 def _make_params() -> MatchupParams:
